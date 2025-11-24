@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 
 // Windows 7 style web desktop (React single-file component)
 // Uses the uploaded local image as wallpaper. Path provided (will be transformed to URL by environment):
-const WALLPAPER_URL = "/mnt/data/2fe64660-597c-40df-ab49-6330b9d6b363.png";
+const WALLPAPER_URL = "/wallpaper.jpg";
 
 function DraggableWindow({ id, title, children, zIndex, onFocus, focused }) {
   const ref = useRef();
