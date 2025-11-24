@@ -108,6 +108,12 @@ To fetch data from your Flask backend, you will use `fetch()` or `axios` in your
 - Create Component: Make a new file in src folder with .jsx.
 
 #### Push your features to GitHub
+> Set your default branch locally
+```
+git branch -M your-branch-name
+```
+<br/>
+
 > Through your branch
 ```
 git add .
