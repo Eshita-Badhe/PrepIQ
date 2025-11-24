@@ -100,9 +100,24 @@ To fetch data from your Flask backend, you will use `fetch()` or `axios` in your
 *   *Example URL:* `http://localhost:5000/api/data`
 
 
-#### >>> Key Tips for Your "Counter Project"
+#### >>> Key Tips for Project
 - Create HTML: Make new file in root folder with .html.
 - Create CSS: Make new file in src folder with .css.
 - Create JS: Make new file in src folder with .jsx.
 - Create Flask: Make new file in backend folder with .py.
 - Create Component: Make a new file in src folder with .jsx.
+
+#### Push your features to GitHub
+> Through your branch
+```
+git add .
+git commit -m "What feature your are adding"
+git push -u origin your-branch-name
+```
+---
+> Before starting a new feature always check for updates by team memeber
+
+And if any ,
+```
+git pull orgin main
+```
