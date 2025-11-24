@@ -7,7 +7,7 @@
 ### 1. Clone the Repository
 Open your terminal (Command Prompt or PowerShell) and run:
 ```
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/Eshita-Badhe/ExamBuddy
 cd ExamBuddy
 ```
 
