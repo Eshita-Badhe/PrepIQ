@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 
 /*
-  Single-file advanced Windows-7-style desktop.
-  - Put this at src/App.jsx (replace existing App.jsx)
-  - Default wallpaper uses the uploaded local file path below; your environment will map it to a usable URL.
+ Single-file advanced Windows-7-style desktop with improved Start menu footer alignment.
+ Default wallpaper path (your uploaded file):
+ /mnt/data/f8dab4ce-4d3b-4338-a3d8-a61e2a0fea2e.png
 */
-const DEFAULT_WALLPAPER = "/wallpaper.jpg"; // <<-- change this if needed
 
-// ----------------- Global styles (injected once) -----------------
+const DEFAULT_WALLPAPER = "/mnt/data/f8dab4ce-4d3b-4338-a3d8-a61e2a0fea2e.png";
+
+// ----------------- CSS injected once -----------------
 const css = `
 :root{
   --taskbar-height:48px;
@@ -23,13 +24,19 @@ html,body,#root{height:100%; margin:0; font-family: "Segoe UI", Tahoma, sans-ser
 .icon{width:72px; text-align:center; margin-bottom:12px; cursor:pointer; user-select:none}
 .icon .thumb{width:72px;height:72;border-radius:10px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;font-size:28px}
 .taskbar{position:fixed; left:0; right:0; bottom:0; height:var(--taskbar-height); display:flex; align-items:center; padding:6px 12px; background:linear-gradient(180deg,#2b2b2b,#111); box-shadow:0 -6px 24px rgba(0,0,0,0.6); color:#fff}
-.start-orb{width:40px;height:40;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.start-orb{width:44px;height:44; border-radius:10px; display:flex;align-items:center;justify-content:center;cursor:pointer; margin-left:6px}
+.start-orb-inner{width:24px;height:24px;border-radius:999px;background:linear-gradient(180deg,var(--accent),#ff8b3d)}
 .taskbar-buttons{display:flex; gap:8px; margin-left:12px; align-items:center}
 .taskbar-button{display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.02); cursor:pointer; min-width:110px; overflow:hidden}
 .taskbar-right{margin-left:auto; display:flex; gap:10px; align-items:center}
-.start-menu{position:fixed; bottom:54px; left:12px; width:360px; height:460px; border-radius:8px; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,0.5); display:flex; background:linear-gradient(180deg,#fff,#f2f2f2)}
-.start-left{width:58%; padding:14px; border-right:1px solid rgba(0,0,0,0.06)}
-.start-right{width:42%; padding:14px; position:relative}
+.start-menu{position:fixed; bottom:54px; left:12px; width:420px; height:460px; border-radius:8px; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,0.5); display:flex; background:linear-gradient(180deg,#fff,#f2f2f2); color:#111}
+.start-left{width:62%; padding:14px; border-right:1px solid rgba(0,0,0,0.06)}
+.start-right{width:38%; padding:14px; position:relative}
+.start-footer{position:absolute; left:0; right:0; bottom:0; height:72px; display:flex; align-items:center; padding:10px 12px; border-top:1px solid rgba(0,0,0,0.06); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));}
+.start-footer .left{flex:1}
+.start-footer .right{display:flex; gap:8px; align-items:center}
+.start-footer button{padding:8px 12px; border-radius:6px; border:none; cursor:pointer; background:#eee}
+.start-footer button:hover{transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,0.12)}
 .window{position:fixed; background:rgba(255,255,255,0.98); box-shadow:0 22px 60px rgba(0,0,0,0.45); border-radius:6px; overflow:hidden; transition:box-shadow .15s, transform .12s}
 .window-header{height:36px; display:flex; align-items:center; padding:6px 10px; cursor:grab; background:linear-gradient(#e9f0ff,#cfe0f6); border-bottom:1px solid rgba(0,0,0,0.06)}
 .window-buttons{margin-left:auto; display:flex; gap:6px}
@@ -39,7 +46,7 @@ html,body,#root{height:100%; margin:0; font-family: "Segoe UI", Tahoma, sans-ser
 .small-muted{font-size:12px; color:#555}
 `;
 
-// Safe inject styles
+// inject CSS
 function injectCSS() {
   try {
     if (typeof document === "undefined") return;
@@ -48,17 +55,15 @@ function injectCSS() {
     s.id = "win7-css";
     s.innerHTML = css;
     document.head.appendChild(s);
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 }
 
-// ----------------- Helpers -----------------
+// helpers
 const uid = (p = "") => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}${p}`;
 
-// ----------------- Window manager hook -----------------
+// window manager hook
 function useWindowManager() {
-  const [wins, setWins] = useState([]); // {id,name,state,x,y,w,h,content}
+  const [wins, setWins] = useState([]);
   const [z, setZ] = useState([]);
   const next = useRef(1);
 
@@ -95,7 +100,7 @@ function useWindowManager() {
   return { wins, openWindow, closeWindow, minimizeWindow, maximizeWindow, focusWindow, updateWindow, z };
 }
 
-// ----------------- Window component (draggable/resizable) -----------------
+// draggable/resizable window component
 const Win = forwardRef(function Win({ win, focused, onFocus, onClose, onMinimize, onMaximize, onUpdate }, ref) {
   const nodeRef = useRef();
   const dragging = useRef(false);
@@ -194,14 +199,14 @@ const Win = forwardRef(function Win({ win, focused, onFocus, onClose, onMinimize
       {/* Resize handles */}
       <div onMouseDown={(e) => startResize("r", e)} style={{ position: "absolute", right: 0, top: 8, width: 8, height: "calc(100% - 16px)", cursor: "e-resize" }} />
       <div onMouseDown={(e) => startResize("b", e)} style={{ position: "absolute", bottom: 0, left: 8, height: 8, width: "calc(100% - 16px)", cursor: "s-resize" }} />
-      <div onMouseDown={(e) => startResize("rb", e)} style={{ position: "absolute", right: 0, bottom: 0, width: 12, height: 12, cursor: "nwse-resize" }} />
+      <div onMouseDown={(e) => startResize("rb", e)} style{{ position: "absolute", right: 0, bottom: 0, width: 12, height: 12, cursor: "nwse-resize" }} />
       <div onMouseDown={(e) => startResize("l", e)} style={{ position: "absolute", left: 0, top: 8, width: 8, height: "calc(100% - 16px)", cursor: "w-resize" }} />
       <div onMouseDown={(e) => startResize("t", e)} style={{ position: "absolute", left: 8, top: 0, width: "calc(100% - 16px)", height: 8, cursor: "n-resize" }} />
     </div>
   );
 });
 
-// ----------------- Demo apps -----------------
+// ----------------- Demo app components -----------------
 function ExplorerApp() {
   return (
     <div style={{ color: "#222" }}>
@@ -229,18 +234,12 @@ function NotepadApp() {
     </div>
   );
 }
-function BrowserApp() {
-  return <div><h3>Browser</h3><p>Demo browser window</p></div>;
-}
+function BrowserApp() { return <div><h3>Browser</h3><p>Demo browser window</p></div>; }
 function CalculatorApp() {
   const [expr, setExpr] = useState("");
   const [res, setRes] = useState("");
   function calc() {
-    try {
-      // eslint-disable-next-line no-eval
-      const v = eval(expr);
-      setRes(String(v));
-    } catch { setRes("err"); }
+    try { const v = eval(expr); setRes(String(v)); } catch { setRes("err"); }
   }
   return (
     <div>
@@ -255,10 +254,7 @@ function SystemInfoApp() {
   return (
     <div>
       <h3>System Info</h3>
-      <ul>
-        <li>OS: Windows 7 (simulated)</li>
-        <li>Memory: simulated</li>
-      </ul>
+      <ul><li>OS: Windows 7 (sim)</li><li>Memory: simulated</li></ul>
     </div>
   );
 }
@@ -266,15 +262,14 @@ function SystemInfoApp() {
 // ----------------- Main App -----------------
 export default function App() {
   injectCSS();
-  // debug
-  useEffect(() => { console.log("App mounted"); }, []);
+  useEffect(() => { console.log("App mounted - Start menu footer aligned"); }, []);
 
   const { wins, openWindow, closeWindow, minimizeWindow, maximizeWindow, focusWindow, updateWindow, z } = useWindowManager();
   const [startOpen, setStartOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [timeStr, setTimeStr] = useState("");
   const [wallpaper, setWallpaper] = useState(DEFAULT_WALLPAPER);
-  const [context, setContext] = useState(null); // {x,y,type}
+  const [context, setContext] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => setTimeStr(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })), 1000);
@@ -291,7 +286,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [wins]);
 
-  // open default apps (for demo)
   useEffect(() => {
     if (wins.length === 0) {
       openWindow({ name: "Welcome", content: () => (<div style={{ padding: 12 }}><h2>Welcome</h2><div className="small-muted">Double-click My Computer to open Explorer</div></div>) });
@@ -325,11 +319,24 @@ export default function App() {
     setWallpaper(URL.createObjectURL(f));
   }
 
-  // Desktop icons
   const desktopIcons = [
     { id: "mycomp", title: "My Computer", icon: "🗂️", app: "Explorer" },
     { id: "recycle", title: "Recycle Bin", icon: "🗑️", app: "Explorer" },
   ];
+
+  // Start menu actions
+  function handleRestart() {
+    alert("Restart (demo)");
+  }
+  function handleShutdown() {
+    alert("Shutdown (demo)");
+  }
+  function handleReset() {
+    // Example reset: close all windows
+    if (confirm("Reset desktop (close all windows)?")) {
+      wins.forEach((w) => closeWindow(w.id));
+    }
+  }
 
   return (
     <div className="win7-viewport" onContextMenu={(e) => onContext(e, "desktop")}>
@@ -338,7 +345,7 @@ export default function App() {
         background: wallpaper ? undefined : "linear-gradient(135deg,#07293a,#04202a)"
       }} />
 
-      <div className="desktop-icons" onDoubleClick={(e)=>{}}>
+      <div className="desktop-icons">
         {desktopIcons.map((ic) => (
           <div key={ic.id} className="icon" onDoubleClick={() => openAppByName(ic.app)} title={ic.title}>
             <div className="thumb">{ic.icon}</div>
@@ -347,7 +354,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* Render windows */}
+      {/* Windows */}
       {wins.map((w) => (
         <Win
           key={w.id}
@@ -362,7 +369,7 @@ export default function App() {
         />
       ))}
 
-      {/* Start menu */}
+      {/* Start menu (aligned footer with Restart/Shutdown/Reset on bottom-right) */}
       {startOpen && (
         <div className="start-menu" style={{ zIndex: 900 }}>
           <div className="start-left">
@@ -380,11 +387,16 @@ export default function App() {
               <li>Pictures</li>
               <li>Music</li>
             </ul>
-            <div style={{ position: "absolute", bottom: 14, left: 14, right: 14, display: "flex", justifyContent: "space-between" }}>
-              <button style={{ padding: "8px 12px", borderRadius: 4 }}>All Programs</button>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => alert("Restart (demo)")}>Restart</button>
-                <button onClick={() => alert("Shutdown (demo)")}>Shutdown</button>
+
+            {/* footer sits at bottom of start-right container but spans full width via absolute positioning */}
+            <div className="start-footer" style={{ position: "absolute", left: 0, right: 0 }}>
+              <div className="left">
+                <div style={{ fontSize: 12, color: "#666" }}>Signed in as <strong>User</strong></div>
+              </div>
+              <div className="right">
+                <button onClick={handleRestart} title="Restart">Restart</button>
+                <button onClick={handleShutdown} title="Shutdown">Shutdown</button>
+                <button onClick={handleReset} title="Reset">Reset</button>
               </div>
             </div>
           </div>
@@ -395,7 +407,7 @@ export default function App() {
       <div className="taskbar" style={{ zIndex: 800 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div className="start-orb" onClick={() => setStartOpen((s) => !s)} title="Start">
-            <div style={{ width: 22, height: 22, borderRadius: 999, background: "linear-gradient(180deg,var(--accent),#ff8b3d)" }} />
+            <div className="start-orb-inner" />
           </div>
 
           <div className="taskbar-buttons">
