@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } f
     search filters pinned/programs/recent lists in left panel.
 */
 
-const START_ORB = "/mnt/data/A_digital_vector_graphic_features_the_Microsoft_Wi.png";
+const START_ORB = "./start.jpg";
 const DEFAULT_WALLPAPER = "./wallpaper.jpg";
 
 /* ---------- Styles (single-file) ---------- */
