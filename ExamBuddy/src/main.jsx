@@ -5,15 +5,14 @@ import Windows7BootAnimation from './Load.jsx'
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Reg from './Reg';
 import Boot from './Boot.jsx';
-
-
+import Login from './Login.jsx';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Windows7BootAnimation />} />
-        <Route path="/login" element={<div>Login Page (to be implemented)</div>} />
+        <Route path="/login" element={<Login />} />
         <Route path="/desktop" element={<div>Desktop/App Page (to be implemented)</div>} />
         <Route path="/boot" element={<Boot />} />
         <Route path="/register" element={<Reg />} />

@@ -60,8 +60,8 @@ function Windows7BootAnimation() {
         <div className="ball green"></div>
         <div className="ball yellow"></div>
       </div>
-      <h2>Starting Windows</h2>
-      <h4>&copy; 2025 Microsoft Corporation</h4>
+      <h2>Starting ExamBuddy</h2>
+      <h4>&copy; 2025 ExamBuddy MS Windows 7</h4>
     </div>
   );
 }

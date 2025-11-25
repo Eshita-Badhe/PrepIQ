@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import './Reg.css';
 import ShowWin7Popup from './ShowWin7Popup'; // Correctly import component (capitalize S)
 import userImg from './assets/user.png';
+import { useNavigate } from 'react-router-dom';
+
 
 export default function Reg() {
   const [form, setForm] = useState({
@@ -16,6 +18,10 @@ export default function Reg() {
     otp: '',
     emailVerified: false,
   });
+
+  
+  const navigate = useNavigate();
+
   const [otpSent, setOtpSent] = useState(false);
 
   // Popup state
@@ -107,13 +113,19 @@ export default function Reg() {
       const result = await resp.json();
       if (result.success || result.message) {
         showWin7Popup(result.message || 'Registration successful!');
-        // Optionally reset form or redirect
+        setTimeout(() => {
+          navigate('/login'); 
+        }, 800);
       } else {
         showWin7Popup(result.error || result.msg || "Registration failed.");
       }
     } catch (err) {
       showWin7Popup("Error during registration.");
     }
+  };
+
+  const handleCancel = () => {
+    navigate('/boot');
   };
 
   // FINAL RETURN: Popup rendered at top-level, below form
@@ -207,7 +219,7 @@ export default function Reg() {
             </div>
             <div className="win7-form-btns">
               <button type="submit" className="win7-btn primary">Create Account</button>
-              <button type="button" className="win7-btn secondary" style={{marginLeft:'14px'}}>Cancel</button>
+              <button type="button" className="win7-btn secondary" style={{marginLeft:'14px'}} onClick={handleCancel}>Cancel</button>
             </div>
           </div>
         </form>
