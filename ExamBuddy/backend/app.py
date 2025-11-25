@@ -1,6 +1,6 @@
 from flask import request, jsonify, session, Flask
 from flask_mail import Message, Mail
-from flask_login import current_user
+from flask_login import current_user, LoginManager, UserMixin, login_user
 import random, time
 import os
 import pymysql
@@ -29,7 +29,29 @@ mail = Mail(app)
 CORS(app, supports_credentials=True)
 
 import re
-import dns.resolver  # pip install dnspython
+import dns.resolver  
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+class User(UserMixin):
+    def __init__(self, id, username, direct_login):
+        self.id = id
+        self.username = username
+        self.direct_login = direct_login
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, direct_login FROM users WHERE id=%s", (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if user:
+        return User(user['id'], user['username'], user['direct_login'])
+    return None
+
 
 def is_email_valid(email):
     # 1. Format check (simple regex, covers basic emails)
@@ -212,6 +234,32 @@ def direct_login_status():
     # Not logged in
     return jsonify({"status": "login"})
 
+@app.route('/api/check-login', methods=['POST'])
+def check_login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, direct_login, password FROM users WHERE username=%s", (username,))
+    res = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not res:
+        return jsonify(success=False, hint='your pass')
+    # Assign variables from result
+    user_id = res['id']
+    username = res['username']
+    direct_login = res.get('direct_login', False)
+    stored_hash = res['password']
+    from werkzeug.security import check_password_hash
+    if check_password_hash(stored_hash, password):
+        # Make sure you have a User class defined as per Flask-Login
+        from flask_login import login_user
+        login_user(User(user_id, username, direct_login))
+        return jsonify(success=True)
+    else:
+        return jsonify(success=False, hint='your pass')
 
 
 if __name__ == '__main__':
