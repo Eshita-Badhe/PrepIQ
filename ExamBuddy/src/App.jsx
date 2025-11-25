@@ -1,5 +1,5 @@
 import Win7DesktopAdvanced from "./Win7Desktop-Advanced";
 
 export default function App() {
-  return <Win7Desktop-Advanced />;
+  return <Win7DesktopAdvanced />;
 }
