@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } f
 // Win7Desktop-Advanced.jsx
 // Single-file modularized React component that recreates an advanced Windows 7 style desktop.
 // Usage: drop this file into a React app (Vite / CRA). Import default export and render in App.
-// Notes: This file uses inline styles and basic CSS variables so it works without Tailwind.
+// Filename must be exactly: Win7Desktop-Advanced.jsx
 
 // -------------------------
 // Small utility helpers
@@ -39,12 +39,19 @@ const globalStyles = `
 .context-menu{position:fixed; background:white; box-shadow:0 6px 20px rgba(0,0,0,0.35); border-radius:6px; overflow:hidden;}
 `;
 
+// Safe style injector
 function injectStyles(){
-  if (document.getElementById('win7-advanced-styles')) return;
-  const s = document.createElement('style');
-  s.id = 'win7-advanced-styles';
-  s.innerHTML = globalStyles;
-  document.head.appendChild(s);
+  try {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('win7-advanced-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'win7-advanced-styles';
+    s.innerHTML = globalStyles;
+    document.head.appendChild(s);
+  } catch (err) {
+    // If style injection fails, we still let the app continue
+    // console.warn('injectStyles error', err);
+  }
 }
 
 // -------------------------
@@ -55,10 +62,18 @@ function useWindowsManager() {
   const [zOrder, setZOrder] = useState([]);
   const nextId = useRef(1);
 
+  function getWindowMetricsDefaults(w, h) {
+    // safe guards for SSR or early runs
+    const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
+    const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 768;
+    return { winW, winH, defaultX: Math.max(40, (winW - w) / 2), defaultY: Math.max(40, (winH - h) / 2) };
+  }
+
   function openWindow({name, content, w=520, h=320, centered=true}){
     const id = nextId.current++;
-    const x = centered ? Math.max(40, (window.innerWidth - w)/2 + (Math.random()-0.5)*30) : 120 + Math.random()*200;
-    const y = centered ? Math.max(40, (window.innerHeight - h)/2 + (Math.random()-0.5)*40) : 80 + Math.random()*120;
+    const { winW, winH, defaultX, defaultY } = getWindowMetricsDefaults(w, h);
+    const x = centered ? Math.max(40, defaultX + (Math.random()-0.5)*30) : 120 + Math.random()*200;
+    const y = centered ? Math.max(40, defaultY + (Math.random()-0.5)*40) : 80 + Math.random()*120;
     const win = { id, name, state: 'normal', x, y, w, h, content };
     setWindows(ws => [...ws, win]);
     setZOrder(z => [...z, id]);
@@ -139,15 +154,16 @@ const Win = forwardRef(function Win({win, focused, onFocus, onClose, onMinimize,
   }
 
   const styles = {
-    left: win.x,
-    top: win.y,
-    width: win.w,
-    height: win.h,
+    left: typeof win.x === 'number' ? win.x : 100,
+    top: typeof win.y === 'number' ? win.y : 80,
+    width: typeof win.w === 'number' ? win.w : 520,
+    height: typeof win.h === 'number' ? win.h : 320,
     zIndex: focused ? 1000 : 200 + (win.id % 20),
     display: win.state === 'minimized' ? 'none' : 'block'
   };
   if (win.state === 'maximized'){
-    styles.left = 8; styles.top = 8; styles.width = window.innerWidth - 16; styles.height = window.innerHeight - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--taskbar-height')||48) - 16;
+    const taskbarHeight = (typeof document !== 'undefined') ? parseInt(getComputedStyle(document.documentElement).getPropertyValue('--taskbar-height')||48) : 48;
+    styles.left = 8; styles.top = 8; styles.width = (typeof window !== 'undefined' ? window.innerWidth : 1024) - 16; styles.height = (typeof window !== 'undefined' ? window.innerHeight : 768) - taskbarHeight - 16;
   }
 
   return (
@@ -177,7 +193,7 @@ const Win = forwardRef(function Win({win, focused, onFocus, onClose, onMinimize,
 // -------------------------
 // StartMenu component
 // -------------------------
-function StartMenu({visible, onOpenApp}){
+function StartMenu({visible, onOpenApp}) {
   if(!visible) return null;
   return (
     <div className="start-menu">
@@ -185,7 +201,7 @@ function StartMenu({visible, onOpenApp}){
         <div style={{width:'58%', padding:14, borderRight:'1px solid rgba(0,0,0,0.06)'}}>
           <input placeholder="Search programs and files" style={{width:'100%', padding:8, borderRadius:4, border:'1px solid #ccc'}} />
           <div style={{marginTop:12, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-            {['Internet Explorer','Notepad','Calculator','Paint','Control Panel','Command Prompt'].map(n => (
+            {['Internet Explorer','Notepad','Calculator','Paint','Control Panel','Command Prompt','System Info'].map(n => (
               <div key={n} onClick={() => onOpenApp(n)} style={{padding:8, background:'#f2f4fb', borderRadius:4, cursor:'pointer'}}>{n}</div>
             ))}
           </div>
@@ -257,17 +273,48 @@ function SystemInfoApp(){
     </div>
   );
 }
+function CalculatorApp(){
+  const [expr, setExpr] = useState('');
+  const [res, setRes] = useState('');
+  function calc() {
+    try { // eval is used only for demo small calculator
+      // eslint-disable-next-line no-eval
+      const v = eval(expr);
+      setRes(String(v));
+    } catch (err) {
+      setRes('err');
+    }
+  }
+  return (
+    <div>
+      <h3>Calculator</h3>
+      <input value={expr} onChange={(e)=>setExpr(e.target.value)} placeholder="2+2" />
+      <button onClick={calc}>=</button>
+      <div>Result: {res}</div>
+    </div>
+  );
+}
 
 // -------------------------
 // Main exported component
 // -------------------------
 export default function Win7DesktopAdvanced(){
-  injectStyles();
+  // inject styles only after client mount (safer) & debug mount
+  useEffect(() => {
+    injectStyles();
+    // visible sign that component mounted
+    // open browser console (F12) and look for this message
+    // If you see this message but still blank, continue debugging DOM
+    // console.log is intentionally left for debugging and can be removed later
+    // eslint-disable-next-line no-console
+    console.log('Win7DesktopAdvanced mounted');
+  }, []);
+
   const { windows, openWindow, closeWindow, minimizeWindow, maximizeWindow, focusWindow, updateWindow, zOrder } = useWindowsManager();
   const [startOpen, setStartOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [timeStr, setTimeStr] = useState('');
-  const [wallpaper, setWallpaper] = useState('/wallpaper.jpg');
+  const [wallpaper, setWallpaper] = useState('/wallpaper.jpg'); // fallback if missing is handled in render
   const [context, setContext] = useState(null); // {x,y,type}
 
   useEffect(()=>{
@@ -296,6 +343,7 @@ export default function Win7DesktopAdvanced(){
       case 'Notepad': content = () => <NotepadApp />; break;
       case 'Browser': content = () => <BrowserApp />; break;
       case 'System Info': content = () => <SystemInfoApp />; break;
+      case 'Calculator': content = () => <CalculatorApp />; break;
       default: content = () => <div><h3>{name}</h3><p>Demo application window.</p></div>;
     }
     openWindow({ name, content });
@@ -333,9 +381,21 @@ export default function Win7DesktopAdvanced(){
     setWallpaper(url);
   }
 
+  // Basic UI guard: if no DOM available, render minimal message (shouldn't happen in browser)
+  if (typeof document === 'undefined') {
+    return <div style={{padding:20}}>Win7DesktopAdvanced (client only)</div>;
+  }
+
   return (
     <div className="win7-viewport" onContextMenu={(e)=>onContext(e,'desktop')} style={{outline:'none'}}>
-      <div className="wallpaper" style={{backgroundImage:`url('${wallpaper}')`}} />
+      <div
+        className="wallpaper"
+        style={{
+          // use image if available, otherwise fallback to a dark gradient
+          backgroundImage: wallpaper ? `url('${wallpaper}')` : undefined,
+          background: wallpaper ? undefined : 'linear-gradient(135deg,#0a2240,#07263a)'
+        }}
+      />
 
       <div className="desktop-icons">
         <div className="icon" onDoubleClick={()=>onDesktopIconDoubleClick('Explorer')} title="My Computer">
