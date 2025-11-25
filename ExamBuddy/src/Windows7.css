@@ -1,3 +1,5 @@
+/*reference: https://codepen.io/rajatkantinandi/pen/qxmYYX?utm_source=chatgpt.com*/
+
 :root{
   --size:2px;
   --red-glow:0px 0px calc(var(--size)*1.2) 2px #FF2828;
