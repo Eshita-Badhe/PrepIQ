@@ -199,7 +199,18 @@ const Win = forwardRef(function Win({ win, focused, onFocus, onClose, onMinimize
       {/* Resize handles */}
       <div onMouseDown={(e) => startResize("r", e)} style={{ position: "absolute", right: 0, top: 8, width: 8, height: "calc(100% - 16px)", cursor: "e-resize" }} />
       <div onMouseDown={(e) => startResize("b", e)} style={{ position: "absolute", bottom: 0, left: 8, height: 8, width: "calc(100% - 16px)", cursor: "s-resize" }} />
-      <div onMouseDown={(e) => startResize("rb", e)} style{{ position: "absolute", right: 0, bottom: 0, width: 12, height: 12, cursor: "nwse-resize" }} />
+      <div
+  onMouseDown={(e) => startResize("rb", e)}
+  style={{
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    cursor: "nwse-resize"
+  }}
+/>
+
       <div onMouseDown={(e) => startResize("l", e)} style={{ position: "absolute", left: 0, top: 8, width: 8, height: "calc(100% - 16px)", cursor: "w-resize" }} />
       <div onMouseDown={(e) => startResize("t", e)} style={{ position: "absolute", left: 8, top: 0, width: "calc(100% - 16px)", height: 8, cursor: "n-resize" }} />
     </div>
