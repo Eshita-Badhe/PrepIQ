@@ -637,6 +637,8 @@ export default function Win7Desktop() {
               <div style={{ padding: 10, cursor: "pointer" }} onClick={() => { wins.forEach((w) => minimizeWindow(w.id)); closeContext(); }}>Show desktop</div>
             </div>
           ) : <div style={{ padding: 10 }}>No actions</div>}
+          </div>
+      )}
       {calendarOpen && (
         <DraggableCalendar onClose={() => setCalendarOpen(false)}>
           <div style={{ padding: 8 }}>
@@ -660,7 +662,6 @@ export default function Win7Desktop() {
           ) : <div style={{ padding: 10 }}>No actions</div>}
         </div>
       )}
-      )}
     </div>
-  );
+);
 }
