@@ -7,7 +7,7 @@ export default function ShowWin7Popup({ popupMsg, onClose }) {
       <div className="win7-dialog-bg">
         <div className="win7-dialog">
           <span>{popupMsg}</span>
-          <button className="win7-btn" onClick={onClose}>OK</button>
+          <button className="win7-btn primary" onClick={onClose}>OK</button>
         </div>
       </div>
     )
