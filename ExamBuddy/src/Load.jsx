@@ -11,6 +11,7 @@ function Windows7BootAnimation() {
     // Play audio
     if (audioRef.current) {
       audioRef.current.volume = 1.0;
+      audioRef.current.play();
       audioRef.current.play().catch(() => {
         window.addEventListener("click", playAudioOnce);
       });
@@ -37,11 +38,9 @@ function Windows7BootAnimation() {
         const result = await resp.json();
         if (result.status === "direct") {
           navigate('/desktop');          // Directly to desktop/app
-        } else if (result.status === "normal") {
-          navigate('/boot');             // Go to boot options
         } else {
-          navigate('/login');            // Not logged in: show login
-        }
+          navigate('/boot');             // Go to boot options
+        } 
       } catch (err) {
         navigate('/boot');    // Fallback if API fails
       }
