@@ -637,7 +637,29 @@ export default function Win7Desktop() {
               <div style={{ padding: 10, cursor: "pointer" }} onClick={() => { wins.forEach((w) => minimizeWindow(w.id)); closeContext(); }}>Show desktop</div>
             </div>
           ) : <div style={{ padding: 10 }}>No actions</div>}
+      {calendarOpen && (
+        <DraggableCalendar onClose={() => setCalendarOpen(false)}>
+          <div style={{ padding: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 700 }}>{new Date().getFullYear()}</div>
+              <button onClick={() => setCalendarOpen(false)} style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer" }} aria-label="Close calendar">✕</button>
+            </div>
+            <div style={{ marginTop: 8 }}>{renderYearCalendar(new Date().getFullYear())}</div>
+          </div>
+        </DraggableCalendar>
+      )}
+
+      {/* Context menu */}
+      {context && (
+        <div className="context-menu" style={{ left: context.x, top: context.y, zIndex: 999 }}>
+          {context.type === "desktop" ? (
+            <div>
+              <div style={{ padding: 10, minWidth: 180, cursor: "pointer" }} onClick={() => { document.getElementById("wallpaper-file").click(); closeContext(); }}>Change desktop background</div>
+              <div style={{ padding: 10, cursor: "pointer" }} onClick={() => { wins.forEach((w) => minimizeWindow(w.id)); closeContext(); }}>Show desktop</div>
+            </div>
+          ) : <div style={{ padding: 10 }}>No actions</div>}
         </div>
+      )}
       )}
     </div>
   );
