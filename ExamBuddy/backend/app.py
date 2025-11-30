@@ -1,39 +1,84 @@
-from flask import request, jsonify, session, Flask
-from flask_mail import Message, Mail
-from flask_login import current_user, LoginManager, UserMixin, login_user
-import random, time
 import os
-import pymysql
-from werkzeug.security import generate_password_hash
-from flask_cors import CORS
+import random
+import time
 import re
-import dns.resolver 
 
+from flask import Flask, request, jsonify, session
+from flask_cors import CORS
+from flask_mail import Mail, Message
+from flask_login import LoginManager, UserMixin, login_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+import dns.resolver
+
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ---------- Flask setup ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_dev_key")
-
-app.config['MYSQL_HOST'] = os.getenv('DB_HOST', 'localhost')
-app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT', 3306))
-app.config['MYSQL_USER'] = os.getenv('DB_USER')
-app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD')
-app.config['MYSQL_DB'] =  os.getenv('DB_NAME')
-app.config['MYSQL_CURSORCLASS'] = os.getenv('DB_CURSORCLASS', 'DictCursor')
-
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = os.getenv('MAIL_PORT', 587)
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] =  os.getenv('MAIL_PASSWORD')
-mail = Mail(app)
-
 CORS(app, supports_credentials=True)
 
-import re
-import dns.resolver  
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+mail = Mail(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 
+# ---------- Supabase setup ----------
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")  # service role or anon, but service role recommended on server
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("WARNING: SUPABASE_URL or SUPABASE_KEY not set. Supabase client will not work properly.")
+
+supabase: Client | None = None
+try:
+    if SUPABASE_URL and SUPABASE_KEY:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    print("Error creating Supabase client:", e)
+    supabase = None
+
+STORAGE_BUCKET = "user-resources"  # create this in Supabase
+
+# ---------- Helpers ----------
+def supabase_available():
+    if supabase is None:
+        print("Supabase client not initialized. Check SUPABASE_URL / SUPABASE_KEY.")
+        return False
+    return True
+
+def safe_single_row(table_name: str, select_cols: str, **filters):
+    """
+    Helper to wrap maybe_single().execute() safely.
+    Returns (data_dict_or_None, error_or_None).
+    """
+    if not supabase_available():
+        return None, "Supabase not configured"
+
+    try:
+        query = supabase.table(table_name).select(select_cols)
+        for col, val in filters.items():
+            query = query.eq(col, val)
+        response = query.maybe_single().execute()
+    except Exception as e:
+        print(f"Supabase query error on table {table_name}:", e)
+        return None, str(e)
+
+    # V2 client: response.data and response.error
+    data = getattr(response, "data", None)
+    error = getattr(response, "error", None)
+    if error:
+        print(f"Supabase returned error for table {table_name}:", error)
+    return data, error
+
+# ---------- User model for Flask-Login ----------
 class User(UserMixin):
     def __init__(self, id, username, direct_login):
         self.id = id
@@ -42,225 +87,342 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, direct_login FROM users WHERE id=%s", (user_id,))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if user:
-        return User(user['id'], user['username'], user['direct_login'])
+    data, error = safe_single_row("users", "id, username, direct_login", id=user_id)
+    if error:
+        return None
+    if data:
+        return User(data["id"], data["username"], data.get("direct_login", False))
     return None
 
-
+# ---------- Email validation ----------
 def is_email_valid(email):
-    # 1. Format check (simple regex, covers basic emails)
     pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
     if not re.match(pattern, email):
-        print("EMAIL CHECK: Invalid format for email:", email)
         return False, "Invalid email format"
-    
-    # 2. MX record check: Ensure domain is routable by mail
+
     domain = email.split('@')[1]
     try:
         records = dns.resolver.resolve(domain, 'MX')
         if not records:
-            print("EMAIL CHECK: No MX records for domain:", domain)
             return False, "Email domain does not exist"
     except Exception:
-        print("EMAIL CHECK: MX lookup failed for domain:", domain)
         return False, "Email domain not reachable"
 
-    # 3. Database existence check
-    print(get_db_connection())
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()  # Good to always close connection!
-
-    if user:
-        print("EMAIL CHECK: Email already registered:", email)
+    # Supabase uniqueness check
+    data, error = safe_single_row("users", "id", email=email)
+    if error:
+        return False, "Internal email check error"
+    if data:
         return False, "Email already registered"
 
-    print("EMAIL CHECK: Email is valid and available:", email)
     return True, "Email is valid and available"
 
-
+# ---------- OTP ----------
 @app.route('/api/send-otp', methods=['POST'])
 def api_send_otp():
     try:
-        data = request.get_json()
-        email = data.get('email')  
-        print("REQUESTED EMAIL FOR OTP:", email)   
+        data = request.get_json(force=True, silent=True) or {}
+        email = data.get('email')
+        if not email:
+            return jsonify({"success": False, "msg": "Email is required"}), 400
+
         valid, message = is_email_valid(email)
-        print("EMAIL VALIDATION:", valid, message)
-        if valid:
-            otp = str(random.randint(100000, 999999))
-            session['otp'] = otp
-            session['otp_time'] = time.time()
-            # Send email
-            msg = Message("Your Exam Buddy OTP", sender=app.config['MAIL_USERNAME'], recipients=[email])
-            msg.body = f"Your OTP is: {otp}. It expires in 5 minutes."
-            try:
-                mail.send(msg)
-            except Exception as e:
-                print("MAIL SEND ERROR:", e)
-                return jsonify({"success": False, "msg": f"Mail send failed: {e}"}), 500
-            return jsonify({"success": True, "msg": "OTP sent."})
-        else:
+        if not valid:
             return jsonify({"success": False, "msg": message})
+
+        otp = str(random.randint(100000, 999999))
+        session['otp'] = otp
+        session['otp_time'] = time.time()
+
+        msg = Message("Your Exam Buddy OTP", sender=app.config['MAIL_USERNAME'], recipients=[email])
+        msg.body = f"Your OTP is: {otp}. It expires in 5 minutes."
+        mail.send(msg)
+        return jsonify({"success": True, "msg": "OTP sent."})
     except Exception as e:
-        print("SEND OTP GENERAL ERROR:", e)
-        return jsonify({"success": False, "msg": "Internal error: "+str(e)}), 500
+        print("SEND OTP ERROR:", e)
+        return jsonify({"success": False, "msg": "Internal error: " + str(e)}), 500
 
 @app.route('/api/verify-otp', methods=['POST'])
 def api_verify_otp():
-    data = request.get_json()
+    data = request.get_json(force=True, silent=True) or {}
     user_otp = data.get('otp')
     stored_otp = session.get('otp')
     stored_time = session.get('otp_time')
-    print("VERIFYING OTP. User OTP:", user_otp, "Stored OTP:", stored_otp)
-    # Expiry: 5 mins
     if not stored_otp or not stored_time or time.time() - stored_time > 300:
-        print("OTP ERROR: OTP expired or not found")
         return jsonify({"success": False, "msg": "OTP expired"})
     if user_otp == stored_otp:
         session.pop('otp', None)
-        print("OTP VERIFIED SUCCESSFULLY")
         return jsonify({"success": True, "msg": "OTP verified"})
-    else:
-        return jsonify({"success": False, "msg": "OTP does not match"})
+    return jsonify({"success": False, "msg": "OTP does not match"})
 
-
-# Database Configuration
-db_config = {
-    'host': app.config['MYSQL_HOST'],
-    'port': app.config['MYSQL_PORT'],
-    'user': app.config['MYSQL_USER'],
-    'password': app.config['MYSQL_PASSWORD'],
-    'database': app.config['MYSQL_DB']
-}
-
-def get_db_connection():
-    print("Connecting to DB with config:", db_config)
-    try:    
-        print("Attempting DB CONNECTION...")    
-        conn = pymysql.connect(
-            host=db_config['host'],
-            port=db_config['port'],
-            user=db_config['user'],
-            password=db_config['password'],
-            database=db_config['database'],
-            connect_timeout=5,
-            cursorclass=pymysql.cursors.DictCursor  
-        )
-        print("DB CONNECTION SUCCESSFUL")
-        return conn
-    except Exception as e:
-        print("DB CONNECTION ERROR:", e)
-        return None
-
+# ---------- Register (no duplicate username or email) ----------
 @app.route('/api/register', methods=['POST'])
 def api_register():
     try:
-        # Get data and debug print
-        data = request.get_json()
-        print("Register received:", data)
-
-        # Parse fields
-        username = data.get('username')
+        data = request.get_json(force=True, silent=True) or {}
+        username = data.get('username', '').strip()
         password = data.get('password')
         confirm_password = data.get('confirmPassword')
-        email = data.get('email')
+        email = data.get('email', '').strip()
         age = data.get('age')
         account_type = data.get('accountType')
-        direct_login = data.get('directLogin')
-        terms_agreed = data.get('termsAgreed')
+        direct_login = data.get('directLogin', False)
+        terms_agreed = data.get('termsAgreed', False)
 
-        # Validation
         if not all([username, password, email, terms_agreed]):
             return jsonify({"error": "Missing required fields"}), 400
         if password != confirm_password:
             return jsonify({"error": "Passwords do not match"}), 400
 
-        # Hash password
+        # Username unique
+        user_data, user_err = safe_single_row("users", "id", username=username)
+        if user_err:
+            return jsonify({"error": "Internal error checking username"}), 500
+        if user_data:
+            return jsonify({"error": "Username already taken"}), 400
+
+        # Email unique
+        valid, msg = is_email_valid(email)
+        if not valid:
+            return jsonify({"error": msg}), 400
+
         hashed_password = generate_password_hash(password)
 
-        # Insert into DB
-        conn = get_db_connection()  # Replace with your pymysql setup
-        cursor = conn.cursor()
+        if not supabase_available():
+            return jsonify({"error": "Supabase not configured"}), 500
 
-        query = """
-        INSERT INTO users 
-        (username, password, email, age, account_type, direct_login, terms_agreed)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        values = (
-            username,
-            hashed_password,
-            email,
-            age,
-            account_type,
-            direct_login,
-            terms_agreed
-        )
+        insert = supabase.table("users").insert({
+            "username": username,
+            "password_hash": hashed_password,
+            "email": email,
+            "age": age,
+            "account_type": account_type,
+            "direct_login": direct_login,
+            "terms_agreed": terms_agreed
+        }).execute()
 
-        cursor.execute(query, values)
-        conn.commit()
-        cursor.close()
-        conn.close()
+        if getattr(insert, "error", None):
+            return jsonify({"error": str(insert.error)}), 500
 
         return jsonify({"success": True, "message": "User registered successfully!"}), 201
 
-    except pymysql.Error as err:
-        return jsonify({"error": f"Database Error: {err}"}), 500
     except Exception as e:
+        print("REGISTER ERROR:", e)
         return jsonify({"error": str(e)}), 500
-@app.route('/api/direct-login-status')
-def direct_login_status():
-    # Only logged-in sessions get direct login
-    if current_user.is_authenticated:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT direct_login FROM users WHERE id=%s", (current_user.id,))
-        res = cursor.fetchone()
-        cursor.close()
-        if res and res['direct_login']:
-            return jsonify({"status": "direct"})
-        else:
-            return jsonify({"status": "normal"})
-    # Not logged in
-    return jsonify({"status": "login"})
 
+# ---------- Login ----------
 @app.route('/api/check-login', methods=['POST'])
 def check_login():
-    data = request.get_json()
-    username = data.get('username')
+    data = request.get_json(force=True, silent=True) or {}
+    username = data.get('username', '').strip()
     password = data.get('password')
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, direct_login, password FROM users WHERE username=%s", (username,))
-    res = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if not res:
-        return jsonify(success=False, hint='your pass')
-    # Assign variables from result
-    user_id = res['id']
-    username = res['username']
-    direct_login = res.get('direct_login', False)
-    stored_hash = res['password']
-    from werkzeug.security import check_password_hash
-    if check_password_hash(stored_hash, password):
-        # Make sure you have a User class defined as per Flask-Login
-        from flask_login import login_user
-        login_user(User(user_id, username, direct_login))
-        return jsonify(success=True)
-    else:
+
+    user_data, user_err = safe_single_row(
+        "users",
+        "id, username, direct_login, password_hash",
+        username=username
+    )
+    if user_err:
+        return jsonify(success=False, hint="internal"), 500
+
+    if not user_data:
         return jsonify(success=False, hint='your pass')
 
+    stored_hash = user_data["password_hash"]
+    if not check_password_hash(stored_hash, password):
+        return jsonify(success=False, hint='your pass')
 
-if __name__ == '__main__':
+    user_obj = User(user_data["id"], user_data["username"], user_data.get("direct_login", False))
+    login_user(user_obj)
+    return jsonify(success=True)
+
+@app.route("/api/me", methods=["GET"])
+def api_me():
+    if not current_user.is_authenticated:
+        return jsonify({"authenticated": False}), 200
+
+    # current_user.id is Supabase users.id (uuid)
+    return jsonify({
+        "authenticated": True,
+        "id": current_user.id,
+        "username": current_user.username,
+        "direct_login": getattr(current_user, "direct_login", False)
+    }), 200
+
+
+@app.route('/api/direct-login-status')
+def direct_login_status():
+    if current_user.is_authenticated:
+        data, err = safe_single_row("users", "direct_login", id=current_user.id)
+        if err:
+            return jsonify({"status": "normal"})
+        if data and data.get("direct_login"):
+            return jsonify({"status": "direct"})
+        return jsonify({"status": "normal"})
+    return jsonify({"status": "login"})
+
+# ---------- Upload Docs to Supabase Storage ----------
+@app.route("/api/upload-docs", methods=["POST"])
+def upload_docs():
+    """
+    Expects form-data:
+      - username (string)
+      - title (string)
+      - files[] (one or more files)
+    Saves to Supabase Storage bucket "user-resources" under path:
+      username_title/original_filename
+    """
+    if "username" not in request.form or "title" not in request.form:
+        return jsonify({"success": False, "msg": "username and title required"}), 400
+
+    username = request.form["username"].strip()
+    title = request.form["title"].strip()
+    files = request.files.getlist("files")
+
+    if not files:
+        return jsonify({"success": False, "msg": "No files uploaded"}), 400
+
+    # Verify user exists
+    user_data, user_err = safe_single_row("users", "id", username=username)
+    if user_err:
+        return jsonify({"success": False, "msg": "Internal user check error"}), 500
+    if not user_data:
+        return jsonify({"success": False, "msg": "User not found"}), 404
+
+    if not supabase_available():
+        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+
+    folder_prefix = f"{username}_{title}".replace(" ", "_")
+    uploaded_paths = []
+
+    for f in files:
+        filename = f.filename
+        if not filename:
+            continue
+        path_in_bucket = f"{folder_prefix}/{filename}"
+        try:
+            file_bytes = f.read()
+            res = supabase.storage.from_(STORAGE_BUCKET).upload(
+                path=path_in_bucket,
+                file=file_bytes,
+                file_options={"content-type": f.mimetype}
+            )
+            # supabase.storage.upload returns dict; check for "error" key
+            if isinstance(res, dict) and res.get("error"):
+                print("Supabase storage error:", res["error"])
+                return jsonify({"success": False, "msg": str(res["error"])}), 500
+
+            uploaded_paths.append(path_in_bucket)
+        except Exception as e:
+            print("UPLOAD ERROR for", path_in_bucket, ":", e)
+            return jsonify({"success": False, "msg": "Upload failed: " + str(e)}), 500
+        finally:
+            f.close()
+
+    return jsonify({"success": True, "paths": uploaded_paths}), 200
+
+@app.route("/api/user-folders", methods=["GET"])
+def api_user_folders():
+    if not current_user.is_authenticated:
+        return jsonify({"success": False, "msg": "Not authenticated"}), 401
+
+    username = current_user.username
+
+    if not supabase_available():
+        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+
+    try:
+      prefix = f"{username}_"
+
+      # For your supabase-py version: only path argument
+      resp = supabase.storage.from_(STORAGE_BUCKET).list("")  # root of bucket
+
+      # resp is usually a list of dicts: [{"name": "username_title/file.pdf", ...}, ...]
+      objects = resp if isinstance(resp, list) else resp.get("data", [])
+
+      folders = set()
+      for obj in objects:
+          name = obj.get("name", "")
+          if not name.startswith(prefix):
+              continue
+          parts = name.split("/", 1)
+          if len(parts) >= 1:
+              folder_full = parts[0]  # "username_title"
+              title_raw = folder_full[len(prefix):]
+              title = title_raw.replace("_", " ")
+              folders.add(title)
+
+      return jsonify({
+          "success": True,
+          "username": username,
+          "folders": sorted(list(folders)),
+      })
+    except Exception as e:
+      print("LIST USER FOLDERS ERROR:", e)
+      return jsonify({"success": False, "msg": str(e)}), 500
+
+@app.route("/api/user-folder-files", methods=["GET"])
+def api_user_folder_files():
+    if not current_user.is_authenticated:
+        return jsonify({"success": False, "msg": "Not authenticated"}), 401
+
+    title = request.args.get("title", "").strip()
+    if not title:
+        return jsonify({"success": False, "msg": "Missing title"}), 400
+
+    username = current_user.username
+    if not supabase_available():
+        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+
+    try:
+        folder_prefix = f"{username}_{title}".replace(" ", "_") + "/"
+
+        # List objects under that prefix
+        resp = supabase.storage.from_(STORAGE_BUCKET).list(folder_prefix)
+        objects = resp if isinstance(resp, list) else resp.get("data", [])
+
+        files = []
+        for obj in objects:
+            name = obj.get("name", "")
+            # name is like "username_title/file.pdf" -> get just file name
+            file_name = name.split("/", 1)[1] if "/" in name else name
+            files.append({
+                "name": file_name,
+                "full_path": name,
+                "size": obj.get("metadata", {}).get("size"),
+                "last_modified": obj.get("updated_at") or obj.get("created_at")
+            })
+
+        return jsonify({"success": True, "files": files})
+    except Exception as e:
+        print("LIST USER FOLDER FILES ERROR:", e)
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+@app.route("/api/file-url", methods=["GET"])
+def api_file_url():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    key = request.args.get("path", "").strip()
+    if not key:
+        return jsonify(success=False, msg="Missing path"), 400
+
+    if not supabase_available():
+        return jsonify(success=False, msg="Supabase not configured"), 500
+
+    try:
+        # key must be like: "Esha_CC/CM51207_CLOUD COMPUTING.pdf"
+        resp = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
+        data = resp.get("data") if isinstance(resp, dict) else getattr(resp, "data", None)
+        public_url = (data or {}).get("publicUrl")
+
+        if not public_url:
+            return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
+
+        return jsonify(success=True, url=public_url)
+    except Exception as e:
+        print("FILE URL ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+if __name__ == "__main__":
     app.run(debug=True)
