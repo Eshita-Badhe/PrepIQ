@@ -261,6 +261,59 @@ def direct_login_status():
         return jsonify({"status": "normal"})
     return jsonify({"status": "login"})
 
+@app.route("/api/profile", methods=["GET"])
+def api_profile():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    try:
+        # 1) Fetch user from public.users to get username/email
+        user_resp = supabase.table("users").select("id, username, email").eq(
+            "id", str(current_user.id)
+        ).limit(1).execute()
+
+
+        users_rows = getattr(user_resp, "data", None) or []
+        if not users_rows:
+            return jsonify(success=False, msg="User not found in users table"), 404
+
+        user_row = users_rows[0]
+        user_id = user_row["id"]
+        username = user_row.get("username")
+        
+
+        # 2) Fetch profile using user_id (preferred)
+        prof_resp = (
+            supabase.table("profiles")
+            .select("full_name, role, streak, last_seen, details")
+            .eq("id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+
+        
+        prof_rows = getattr(prof_resp, "data", None) or []
+
+
+        if not prof_rows:
+            return jsonify(success=False, msg="Profile not found"), 404
+
+        row = prof_rows[0]
+        profile = {
+            "name": row.get("full_name") or username or "USER",
+            "role": row.get("role") or "Student",
+            "streak": row.get("streak") or 0,
+            "lastSeen": row.get("last_seen") or "Today",
+            "details": row.get("details") or "",
+        }
+
+        return jsonify(success=True, profile=profile)
+
+    except Exception as e:
+        print("PROFILE ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+
 # ---------- Upload Docs to Supabase Storage ----------
 @app.route("/api/upload-docs", methods=["POST"])
 def upload_docs():
@@ -386,9 +439,11 @@ def api_user_folder_files():
             name = obj.get("name", "")
             # name is like "username_title/file.pdf" -> get just file name
             file_name = name.split("/", 1)[1] if "/" in name else name
+            full_path = folder_prefix + file_name
+            print("Found file:", file_name, "at", full_path)
             files.append({
                 "name": file_name,
-                "full_path": name,
+                "full_path": full_path,
                 "size": obj.get("metadata", {}).get("size"),
                 "last_modified": obj.get("updated_at") or obj.get("created_at")
             })
@@ -411,18 +466,21 @@ def api_file_url():
         return jsonify(success=False, msg="Supabase not configured"), 500
 
     try:
-        # key must be like: "Esha_CC/CM51207_CLOUD COMPUTING.pdf"
-        resp = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
-        data = resp.get("data") if isinstance(resp, dict) else getattr(resp, "data", None)
-        public_url = (data or {}).get("publicUrl")
+        # For your supabase-py version this returns the full public URL as a string
+        public_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
+
+        print("get_public_url raw:", public_url)
 
         if not public_url:
             return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
 
+        # public_url is already like:
+        # "https://.../storage/v1/object/public/user-resources/Esha_CC/CM51207_CLOUD%20COMPUTING.pdf"
         return jsonify(success=True, url=public_url)
     except Exception as e:
         print("FILE URL ERROR:", e)
         return jsonify(success=False, msg=str(e)), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)
