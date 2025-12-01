@@ -32,12 +32,12 @@ export default function ProfileApp({ openWindow }) {
       } catch (e) {
         setError("Network error: " + e.message);
         setUser({
-          name: "Student User",
-          role: "TY.SEM5 Computer Science",
-          streak: 0,
-          lastSeen: "Today",
-          details: "",
-        });
+            name: "USER",
+            role: "Student",
+            streak: 0,
+            lastSeen: "Today",
+            details: "",
+          });
       } finally {
         setLoading(false);
       }

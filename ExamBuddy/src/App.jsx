@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useWindowManager } from "./hooks/useWindowManager";
 import { Win } from "./components/Window";
 import ProfileApp from "./apps/ProfileApp";
@@ -7,9 +7,15 @@ import UploadDocs from "./apps/Upload";
 import ChatBot from "./apps/ChatBot";
 import { Explorer } from "./apps/ExplorerApp";
 import FileViewerApp from "./apps/FileViewerApp";
-import { NotepadApp, CalculatorApp, BrowserApp, SystemInfoApp } from "./apps/SystemApps";
+import {
+  NotepadApp,
+  CalculatorApp,
+  BrowserApp,
+  SystemInfoApp,
+} from "./apps/SystemApps";
 import "./styles/win7.css";
 import wallpaperImg from "./assets/wallpaper.jpg";
+import { DraggableCalendar, renderYearCalendar } from "./components/Calendar";
 
 const START_ORB = "./start.jpg";
 
@@ -49,165 +55,6 @@ const appRegistry = {
   ),
 };
 
-/* ---- Calendar helpers (full-year) ---- */
-
-function renderYearCalendar(year = new Date().getFullYear()) {
-  const months = [...Array(12)].map((_, i) => {
-    const first = new Date(year, i, 1);
-    const days = new Date(year, i + 1, 0).getDate();
-    const startDay = first.getDay();
-    const cells = [];
-    for (let x = 0; x < startDay; x++) cells.push(null);
-    for (let d = 1; d <= days; d++) cells.push(d);
-    return { i, name: first.toLocaleString(undefined, { month: "short" }), cells };
-  });
-  return (
-    <div className="calendar-grid">
-      {months.map((m) => (
-        <div key={m.i} className="calendar-month">
-          <h5>{m.name}</h5>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7,1fr)",
-              gap: 4,
-              fontSize: 12,
-            }}
-          >
-            {["S", "M", "T", "W", "T", "F", "S"].map((d) => (
-              <div key={d} style={{ textAlign: "center", fontWeight: 600 }}>
-                {d}
-              </div>
-            ))}
-            {m.cells.map((c, idx) => (
-              <div
-                key={idx}
-                style={{
-                  height: 18,
-                  textAlign: "center",
-                  opacity: c ? 1 : 0.2,
-                }}
-              >
-                {c || ""}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function DraggableCalendar({ children, onClose }) {
-  const dragging = useRef(false);
-  const rel = useRef({ x: 0, y: 0 });
-  const [pos, setPos] = useState({
-    x: window.innerWidth - 740,
-    y: window.innerHeight - 480 - 60,
-  });
-
-  useEffect(() => {
-    function onMove(e) {
-      if (!dragging.current) return;
-      setPos((p) => ({
-        x: e.clientX - rel.current.x,
-        y: e.clientY - rel.current.y,
-      }));
-    }
-    function onUp() {
-      dragging.current = false;
-      document.body.style.userSelect = "";
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, []);
-
-  function headerDown(e) {
-    e.stopPropagation();
-    dragging.current = true;
-    rel.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
-    document.body.style.userSelect = "none";
-  }
-
-  useEffect(() => {
-    const adjust = () =>
-      setPos((p) => {
-        const w = window.innerWidth,
-          h = window.innerHeight;
-        const nx = Math.max(8, Math.min(p.x, w - 720 - 8));
-        const ny = Math.max(8, Math.min(p.y, h - 420 - 8));
-        return { x: nx, y: ny };
-      });
-    window.addEventListener("resize", adjust);
-    return () => window.removeEventListener("resize", adjust);
-  }, []);
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        width: 720,
-        maxHeight: 420,
-        zIndex: 910,
-      }}
-    >
-      <div
-        style={{
-          background: "linear-gradient(180deg,#fff,#f2f2f2)",
-          borderRadius: 8,
-          boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: 34,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 8px",
-            background: "#e8e8e8",
-            cursor: "grab",
-          }}
-          onMouseDown={headerDown}
-        >
-          <div style={{ fontWeight: 600 }}>Calendar</div>
-          <div>
-            <button
-              onClick={onClose}
-              style={{
-                border: "none",
-                background: "transparent",
-                fontSize: 16,
-                cursor: "pointer",
-              }}
-              aria-label="Close calendar"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-        <div
-          style={{
-            padding: 8,
-            background: "#fff",
-            maxHeight: 380,
-            overflow: "auto",
-          }}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ====== Taskbar (Win7-style) ======= */
 
 function Taskbar({
@@ -231,8 +78,8 @@ function Taskbar({
         <div
           className="start-orb"
           onClick={(e) => {
-            e.stopPropagation();        // prevent root from closing it immediately
-            onStartMenu();              // toggles startOpen
+            e.stopPropagation();
+            onStartMenu();
           }}
           aria-pressed={isStartMenuOpen}
         >
@@ -317,7 +164,6 @@ function Taskbar({
   );
 }
 
-
 /* ====== MAIN DESKTOP ======= */
 
 export default function Win7Desktop() {
@@ -331,15 +177,37 @@ export default function Win7Desktop() {
     updateWindow,
     z,
   } = useWindowManager();
+
   const [startOpen, setStartOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // clock + date for taskbar
   const [time, setTime] = useState("");
   const [date, setDate] = useState("");
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [screensaverOpen, setScreensaverOpen] = useState(false);
 
+  // power handlers
+  function handleSignOut() {
+    fetch("http://localhost:5000/api/logout", {
+      method: "POST",
+      credentials: "include",
+    }).finally(() => {
+      window.location.reload();
+    });
+  }
+
+  function handleShutdown() {
+    window.location.href = "about:blank";
+  }
+
+  function handleSleep() {
+    setScreensaverOpen(true);
+    setStartOpen(false);
+  }
+
+  // clock
   useEffect(() => {
     const update = () => {
       const now = new Date();
@@ -353,6 +221,7 @@ export default function Win7Desktop() {
     return () => clearInterval(int);
   }, []);
 
+  // current user
   useEffect(() => {
     async function fetchMe() {
       try {
@@ -386,7 +255,6 @@ export default function Win7Desktop() {
         if (name === "UploadDocs") {
           return <UploadDocs username={currentUser?.username} />;
         }
-        // FileViewerApp is opened from Explorer via wmOpenWindow; no change here
         return <AppComponent openWindow={wmOpenWindow} {...extraProps} />;
       },
     });
@@ -396,6 +264,21 @@ export default function Win7Desktop() {
 
   const displayName = currentUser?.username || "User";
 
+  const allPrograms = [
+  { name: "Profile", icon: "👤" },
+  { name: "Explorer", icon: "🗂️" },
+  { name: "UploadDocs", icon: "📤", label: "Upload Resources" },
+  { name: "ChatBot", icon: "🤖", label: "Chatbot Assistant" },
+  { name: "Notepad", icon: "🗒️" },
+  { name: "Browser", icon: "🌐" },
+  { name: "Calculator", icon: "🧮" },
+  { name: "System Info", icon: "💻" },
+];
+
+  const recent = [
+    { id: 1, name: "Profile" },
+    { id: 2, name: "Explorer" },
+  ];
   const rightLinks = [
     "Profile",
     "Explorer",
@@ -406,13 +289,17 @@ export default function Win7Desktop() {
     "History",
   ];
 
+  const filteredPrograms = allPrograms.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div
-    className={`win7-viewport${darkMode ? " dark" : ""}`}
-    onClick={() => {
-        setStartOpen(false)
+      className={`win7-viewport${darkMode ? " dark" : ""}`}
+      onClick={() => {
+        setStartOpen(false);
       }}
-  >
+    >
       <div
         className="wallpaper"
         style={{ backgroundImage: `url(${wallpaperImg})` }}
@@ -465,65 +352,100 @@ export default function Win7Desktop() {
 
       {/* Start Menu */}
       {startOpen && (
-        <div className="start-overlay"
-        onClick={() => setStartOpen(false)}
+        <div
+          className="start-overlay"
+          onClick={() => setStartOpen(false)}
         >
           <div
             className="start-menu"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Start menu"
           >
+            {/* LEFT PANEL */}
             <div className="start-left">
-              <div
-                onClick={() => openAppByName("Profile")}
-                style={{ cursor: "pointer", padding: 5 }}
-                className="item"
-              >
-                👤 <b>User Profile</b>
+              <div className="start-left-header">
+                <div className="start-left-header-title">Programs</div>
+                <div className="start-left-header-date">
+                  {new Date().toLocaleDateString()}
+                </div>
               </div>
-              <div
-                onClick={() => openAppByName("Calculator")}
-                style={{ cursor: "pointer", padding: 5 }}
-                className="item"
-              >
-                🧮 <b>Calculator</b>
+
+              <div className="programs" aria-label="Pinned programs">
+                {filteredPrograms.map((p) => (
+                  <div
+                    key={p.name}
+                    className="program-tile"
+                    onClick={() => openAppByName(p.name)}
+                  >
+                    <div className="program-icon">{p.icon}</div>
+                    <div style={{ fontSize: 13 }}>{p.name}</div>
+                  </div>
+                ))}
+                {filteredPrograms.length === 0 && (
+                  <div className="programs-empty">
+                    No programs match "{searchQuery}"
+                  </div>
+                )}
               </div>
-              <div
-                onClick={() => openAppByName("Explorer")}
-                style={{ cursor: "pointer", padding: 5 }}
-                className="item"
-              >
-                🗂️ <b>My Computer</b>
+
+              <div className="recent-section">
+                <div className="recent-title">Recently opened</div>
+                <div className="recent-list">
+                  {recent.map((r) => (
+                    <div
+                      key={r.id}
+                      className="recent-item"
+                      onClick={() => openAppByName(r.name)}
+                    >
+                      {r.name}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div
-                onClick={() => openAppByName("Notepad")}
-                style={{ cursor: "pointer", padding: 5 }}
-                className="item"
-              >
-                🗒️ <b>Notepad</b>
-              </div>
-              <div
-                onClick={() => openAppByName("Browser")}
-                style={{ cursor: "pointer", padding: 5 }}
-                className="item"
-              >
-                🌐 <b>Browser</b>
+
+              <div className="start-search">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search programs and files"
+                  aria-label="Start search"
+                />
               </div>
             </div>
+
+
+            {/* RIGHT PANEL */}
             <div className="start-right">
-              <div style={{ padding: 8, fontWeight: 600 }} className="welcome-line">
-                Welcome, {displayName}!
+              <div className="user">
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 6,
+                    background: "rgba(255,255,255,0.14)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  👤
+                </div>
+                <div>
+                  <div className="user-name">Welcome, {displayName}</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.9,
+                      color: "rgba(0, 0, 0, 1)",
+                    }}
+                  >
+                    ExamBuddy Win 7
+                  </div>
+                </div>
               </div>
-              <div
-                style={{
-                  color: "#666",
-                  fontSize: "12px",
-                  paddingLeft: 8,
-                  marginBottom: 8,
-                }}
-              >
-                ExamBuddy Win 7
-              </div>
-              <ul style={{ listStyle: "none", paddingLeft: 8 }}>
+
+              <ul>
                 {rightLinks.map((l) => (
                   <li key={l}>
                     <button
@@ -535,6 +457,35 @@ export default function Win7Desktop() {
                   </li>
                 ))}
               </ul>
+
+              <div className="start-footer">
+                <div>
+                  Signed in as <strong>{displayName}</strong>
+                </div>
+                <div className="power-buttons">
+                  <button
+                    className="power-btn"
+                    onClick={handleSignOut}
+                    title="Sign out"
+                  >
+                    ⎋ <span>Sign out</span>
+                  </button>
+                  <button
+                    className="power-btn"
+                    onClick={handleSleep}
+                    title="Sleep"
+                  >
+                    🌙 <span>Sleep</span>
+                  </button>
+                  <button
+                    className="power-btn"
+                    onClick={handleShutdown}
+                    title="Shut down"
+                  >
+                    ⏻ <span>Shut down</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -572,6 +523,25 @@ export default function Win7Desktop() {
             </div>
           </div>
         </DraggableCalendar>
+      )}
+
+      {/* Screensaver (Sleep) */}
+      {screensaverOpen && (
+        <div
+          className="screensaver"
+          onClick={() => setScreensaverOpen(false)}
+          onKeyDown={() => setScreensaverOpen(false)}
+          tabIndex={0}
+        >
+          <div className="screensaver-inner">
+            <p className="quote">
+              “Stay consistent. Small steps lead to big results.”
+            </p>
+            <p className="quote">
+              “Debug your doubts like you debug your code.”
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

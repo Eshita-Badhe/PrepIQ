@@ -5,6 +5,7 @@ export default function UploadDocs({ username }) {
   const [title, setTitle] = useState("");
   const [files, setFiles] = useState([]);
   const [status, setStatus] = useState("");
+  const [statusType, setStatusType] = useState(""); // "ok" | "err"
 
   function handleFileChange(e) {
     setFiles([...e.target.files]);
@@ -13,45 +14,70 @@ export default function UploadDocs({ username }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!username || !title || files.length === 0) {
-      setStatus("Please provide title and files.");
+      setStatusType("err");
+      setStatus("Please provide title and at least one file.");
       return;
     }
     const formData = new FormData();
     formData.append("username", username);
     formData.append("title", title);
-    files.forEach(f => formData.append("files", f));
+    files.forEach((f) => formData.append("files", f));
 
     try {
       const res = await fetch("http://localhost:5000/api/upload-docs", {
         method: "POST",
-        body: formData
+        body: formData,
       });
       const data = await res.json();
       if (data.success) {
+        setStatusType("ok");
         setStatus("Uploaded successfully!");
       } else {
+        setStatusType("err");
         setStatus("Upload failed: " + (data.msg || "Unknown error"));
       }
     } catch (err) {
+      setStatusType("err");
       setStatus("Network error: " + err.message);
     }
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h3>Upload Resources</h3>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Title: </label>
-          <input value={title} onChange={e => setTitle(e.target.value)} />
+    <div className="upload-panel">
+      <h3 className="upload-title">Upload Resources</h3>
+      <form onSubmit={handleSubmit} className="upload-form">
+        <div className="upload-field">
+          <label htmlFor="upload-title">Title</label>
+          <input
+            id="upload-title"
+            className="upload-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Cloud Computing notes"
+          />
         </div>
-        <div style={{ marginTop: 8 }}>
-          <label>Files: </label>
-          <input type="file" multiple onChange={handleFileChange} />
+
+        <div className="upload-field">
+          <label htmlFor="upload-files">Files</label>
+          <input
+            id="upload-files"
+            type="file"
+            multiple
+            className="upload-file-input"
+            onChange={handleFileChange}
+          />
         </div>
-        <button type="submit" style={{ marginTop: 12 }}>Upload</button>
+
+        <button type="submit" className="upload-submit">
+          Upload
+        </button>
       </form>
-      {status && <div style={{ marginTop: 8 }}>{status}</div>}
+
+      {status && (
+        <div className={`upload-status ${statusType}`}>
+          {status}
+        </div>
+      )}
     </div>
   );
 }
