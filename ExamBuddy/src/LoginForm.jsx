@@ -17,6 +17,7 @@ export default function LoginForm() {
       const resp = await fetch('http://localhost:5000/api/check-login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify({ username, password })
       });
       const result = await resp.json();
