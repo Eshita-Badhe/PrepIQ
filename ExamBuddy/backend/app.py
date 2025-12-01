@@ -6,7 +6,7 @@ import re
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from flask_mail import Mail, Message
-from flask_login import LoginManager, UserMixin, login_user, current_user
+from flask_login import LoginManager, UserMixin, login_user, current_user, logout_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import dns.resolver
 
@@ -312,6 +312,26 @@ def api_profile():
     except Exception as e:
         print("PROFILE ERROR:", e)
         return jsonify(success=False, msg=str(e)), 500
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    try:
+        # End Flask-Login session
+        if current_user.is_authenticated:
+            logout_user()
+
+        # Clear any OTP / custom data from Flask session
+        session_keys = ["otp", "otp_time"]
+        for k in session_keys:
+            session.pop(k, None)
+
+        # Optionally nuke everything:
+        # session.clear()
+
+        return jsonify({"success": True, "msg": "Logged out"}), 200
+    except Exception as e:
+        print("LOGOUT ERROR:", e)
+        return jsonify({"success": False, "msg": "Internal logout error"}), 500
 
 
 # ---------- Upload Docs to Supabase Storage ----------
