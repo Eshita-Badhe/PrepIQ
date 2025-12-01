@@ -1,5 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useWindowManager } from "./hooks/useWindowManager";
 import { Win } from "./components/Window";
 import ProfileApp from "./apps/ProfileApp";
@@ -167,6 +168,7 @@ function Taskbar({
 /* ====== MAIN DESKTOP ======= */
 
 export default function Win7Desktop() {
+  const navigate = useNavigate();
   const {
     wins,
     openWindow,
@@ -194,7 +196,7 @@ export default function Win7Desktop() {
       method: "POST",
       credentials: "include",
     }).finally(() => {
-      window.location.reload();
+      navigate("/boot");         
     });
   }
 
