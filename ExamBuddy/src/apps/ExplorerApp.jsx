@@ -78,7 +78,6 @@ export function Explorer({ openWindow }) {
           overflowY: "auto",
         }}
       >
-        <h4>My Resources</h4>
         {loadingFolders && <div>Loading folders...</div>}
         {folderError && <div style={{ color: "red" }}>{folderError}</div>}
         {!loadingFolders && !folderError && folders.length === 0 && (
@@ -105,9 +104,7 @@ export function Explorer({ openWindow }) {
 
       {/* Files */}
       <div style={{ flex: 1, padding: 8, overflowY: "auto" }}>
-        <h4>
-          {selectedFolder ? `Files in "${selectedFolder}"` : "Select a folder"}
-        </h4>
+        
         {selectedFolder && loadingFiles && <div>Loading files...</div>}
         {selectedFolder && fileError && (
           <div style={{ color: "red" }}>{fileError}</div>
