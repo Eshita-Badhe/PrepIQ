@@ -1,0 +1,56 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Python tooling
+*.pytest_cache/
+.mypy_cache/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node / Vite / React
+node_modules/
+dist/
+build/
+.npm/
+.yarn/
+pnpm-lock.yaml
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# VS Code
+.vscode/
+.history/
+
+# Models and large artifacts
+models/
+*.gguf
+*.bin
+*.pt
+*.ckpt
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+
+# OS-specific
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
