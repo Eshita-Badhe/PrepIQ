@@ -22,7 +22,6 @@ export default function UploadDocs({ username }) {
     formData.append("username", username);
     formData.append("title", title);
     files.forEach((f) => formData.append("files", f));
-
     try {
       const res = await fetch("http://localhost:5000/api/upload-docs", {
         method: "POST",

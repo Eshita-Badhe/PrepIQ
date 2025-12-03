@@ -15,6 +15,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import uuid
+from rag_local import embed_local, search_faiss, ingest_single_file
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 # ---------- Flask setup ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_dev_key")
@@ -344,6 +351,7 @@ def upload_docs():
       - files[] (one or more files)
     Saves to Supabase Storage bucket "user-resources" under path:
       username_title/original_filename
+    Also triggers local RAG ingestion for each uploaded file.
     """
     if "username" not in request.form or "title" not in request.form:
         return jsonify({"success": False, "msg": "username and title required"}), 400
@@ -378,14 +386,26 @@ def upload_docs():
             res = supabase.storage.from_(STORAGE_BUCKET).upload(
                 path=path_in_bucket,
                 file=file_bytes,
-                file_options={"content-type": f.mimetype}
+                file_options={"content-type": f.mimetype},
             )
-            # supabase.storage.upload returns dict; check for "error" key
             if isinstance(res, dict) and res.get("error"):
                 print("Supabase storage error:", res["error"])
                 return jsonify({"success": False, "msg": str(res["error"])}), 500
 
             uploaded_paths.append(path_in_bucket)
+            print("UPLOAD OK:", username, title, path_in_bucket)
+
+            # Trigger local RAG ingestion (download -> chunk -> embed_local -> FAISS)
+            try:
+                ingest_single_file(
+                    username=username,
+                    title=title,
+                    path_in_bucket=path_in_bucket,
+                )
+            except Exception as ie:
+                # Log but don't fail the upload
+                print("INGEST ERROR for", path_in_bucket, ":", ie)
+
         except Exception as e:
             print("UPLOAD ERROR for", path_in_bucket, ":", e)
             return jsonify({"success": False, "msg": "Upload failed: " + str(e)}), 500
@@ -494,13 +514,133 @@ def api_file_url():
         if not public_url:
             return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
 
-        # public_url is already like:
-        # "https://.../storage/v1/object/public/user-resources/Esha_CC/CM51207_CLOUD%20COMPUTING.pdf"
         return jsonify(success=True, url=public_url)
     except Exception as e:
         print("FILE URL ERROR:", e)
         return jsonify(success=False, msg=str(e)), 500
 
+# ---------- Chat Bot ----------
+llm = ChatGroq(
+    groq_api_key=GROQ_API_KEY,
+    model_name="llama-3.1-8b-instant",
+    temperature=0.2,
+    max_tokens=512,
+)
+
+SYSTEM_PROMPT = (
+    "You are ExamBuddy, a helpful exam tutor.\n"
+    "You can use the student's uploaded notes (Context) when available.\n"
+    "If the answer is not clearly in the context, you may answer from your own knowledge, "
+    "but prefer to ground answers in the context when possible."
+)
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json(silent=True) or {}
+    user_message = data.get("message", "").strip()
+    username = data.get("username")
+    history_payload = data.get("history", [])
+
+    if not user_message:
+        return jsonify({"reply": "Please enter a question."}), 400
+    if not username:
+        return jsonify({"reply": "Username is missing."}), 400
+
+    # Build history
+    history_msgs = []
+    for h in history_payload:
+        role = h.get("role")
+        content = h.get("content", "")
+        if role == "user":
+            history_msgs.append(HumanMessage(content=content))
+        elif role == "assistant":
+            history_msgs.append(AIMessage(content=content))
+
+    # Embed and retrieve (no topic filter)
+    try:
+        q_emb = embed_local([user_message])[0]
+    except Exception as e:
+        print("embed_local error:", e)
+        return jsonify({"reply": "Error embedding your question."}), 500
+
+    try:
+        results = search_faiss(username, None, q_emb, top_k=5)
+    except Exception as e:
+        print("search_faiss error:", e)
+        results = []
+
+    context = ""
+    if results:
+        blocks = []
+        for r in results:
+            blocks.append(
+                f"[{r['folder_title']} / {r['section_title']}] {r['content']}"
+            )
+        context = "\n\n".join(blocks)
+
+    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    if context:
+        messages.append(SystemMessage(content=f"Context:\n{context}"))
+    messages.extend(history_msgs)
+    messages.append(HumanMessage(content=user_message))
+
+    try:
+        resp = llm.invoke(messages)
+        answer = resp.content.strip()
+    except Exception as e:
+        print("Groq LLM error:", e)
+        answer = "I had trouble generating an answer. Please try again."
+
+    return jsonify({"reply": answer})
+
+
+CHAT_STORE = {}
+
+@app.route("/api/chat-threads", methods=["GET"])
+def list_threads():
+    username = request.args.get("username")
+    if not username:
+        return jsonify({"threads": []})
+    user_store = CHAT_STORE.get(username, {})
+    threads = [
+        {"id": tid, "title": t["title"]}
+        for tid, t in user_store.items()
+    ]
+    # sort newest first by created_at if you add it
+    return jsonify({"threads": threads})
+
+@app.route("/api/chat-threads/<thread_id>", methods=["GET"])
+def get_thread(thread_id):
+    username = request.args.get("username")  # optional or from auth
+    for user, store in CHAT_STORE.items():
+        if thread_id in store:
+            return jsonify({"messages": store[thread_id]["messages"]})
+    return jsonify({"messages": []})
+
+@app.route("/api/chat-threads", methods=["POST"])
+def save_thread():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    thread_id = data.get("thread_id")
+    title = data.get("title") or "New chat"
+    messages = data.get("messages") or []
+
+    if not username:
+        return jsonify({"error": "username required"}), 400
+
+    if username not in CHAT_STORE:
+        CHAT_STORE[username] = {}
+
+    if not thread_id:
+        thread_id = str(uuid.uuid4())
+
+    CHAT_STORE[username][thread_id] = {
+        "id": thread_id,
+        "title": title,
+        "messages": messages,
+    }
+
+    return jsonify({"thread": {"id": thread_id, "title": title}})
 
 if __name__ == "__main__":
     app.run(debug=True)

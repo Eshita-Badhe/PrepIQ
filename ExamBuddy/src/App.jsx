@@ -257,6 +257,9 @@ export default function Win7Desktop() {
         if (name === "UploadDocs") {
           return <UploadDocs username={currentUser?.username} />;
         }
+        if (name === "ChatBot") {
+          return <ChatBot username={currentUser?.username} />;
+        }
         return <AppComponent openWindow={wmOpenWindow} {...extraProps} />;
       },
     });
