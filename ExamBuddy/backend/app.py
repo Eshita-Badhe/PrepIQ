@@ -104,6 +104,9 @@ def load_user(user_id):
         return User(data["id"], data["username"], data.get("direct_login", False))
     return None
 
+def normalize_username(raw: str) -> str:
+    return raw.strip().replace(" ", "_")
+
 # ---------- Email validation ----------
 def is_email_valid(email):
     pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
@@ -362,7 +365,6 @@ def upload_docs():
     username = request.form["username"].strip()
     title = request.form["title"].strip()
     files = request.files.getlist("files")
-
     if not files:
         return jsonify({"success": False, "msg": "No files uploaded"}), 400
 
@@ -423,6 +425,8 @@ def api_user_folders():
         return jsonify({"success": False, "msg": "Not authenticated"}), 401
 
     username = current_user.username
+    
+    username = normalize_username(username)
 
     if not supabase_available():
         return jsonify({"success": False, "msg": "Supabase not configured"}), 500
@@ -467,6 +471,9 @@ def api_user_folder_files():
         return jsonify({"success": False, "msg": "Missing title"}), 400
 
     username = current_user.username
+    
+    username = normalize_username(username)
+
     if not supabase_available():
         return jsonify({"success": False, "msg": "Supabase not configured"}), 500
 
