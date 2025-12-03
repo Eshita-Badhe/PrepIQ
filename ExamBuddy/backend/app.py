@@ -10,6 +10,9 @@ from flask_login import LoginManager, UserMixin, login_user, current_user, logou
 from werkzeug.security import generate_password_hash, check_password_hash
 import dns.resolver
 
+import uuid
+from datetime import datetime 
+
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -539,14 +542,15 @@ def chat():
     data = request.get_json(silent=True) or {}
     user_message = data.get("message", "").strip()
     username = data.get("username")
-    history_payload = data.get("history", [])
+    history_payload = data.get("history", [])  # [{role, content}]
+    thread_id = data.get("thread_id")  # optional, if you start sending it later
 
     if not user_message:
         return jsonify({"reply": "Please enter a question."}), 400
     if not username:
         return jsonify({"reply": "Username is missing."}), 400
 
-    # Build history
+    # Build history for LLM from history_payload
     history_msgs = []
     for h in history_payload:
         role = h.get("role")
@@ -556,7 +560,7 @@ def chat():
         elif role == "assistant":
             history_msgs.append(AIMessage(content=content))
 
-    # Embed and retrieve (no topic filter)
+    # Your existing embed + retrieve logic (unchanged)
     try:
         q_emb = embed_local([user_message])[0]
     except Exception as e:
@@ -584,38 +588,83 @@ def chat():
     messages.extend(history_msgs)
     messages.append(HumanMessage(content=user_message))
 
+    # Call Groq LLM
     try:
         resp = llm.invoke(messages)
         answer = resp.content.strip()
     except Exception as e:
         print("Groq LLM error:", e)
         answer = "I had trouble generating an answer. Please try again."
-
+ 
     return jsonify({"reply": answer})
 
+def get_user_id_by_username(username: str) -> str | None:
+    if not username:
+        return None
 
-CHAT_STORE = {}
+    resp = (
+        supabase
+        .table("users") 
+        .select("id")
+        .eq("username", username)
+        .limit(1)
+        .execute()
+    )
+    rows = resp.data or []
+    if not rows:
+        return None
+    
+    print("rows from users:", rows)
+    return rows[0]["id"]
+
+# ---------- threads API (Supabase persistence) ----------
 
 @app.route("/api/chat-threads", methods=["GET"])
 def list_threads():
     username = request.args.get("username")
     if not username:
-        return jsonify({"threads": []})
-    user_store = CHAT_STORE.get(username, {})
-    threads = [
-        {"id": tid, "title": t["title"]}
-        for tid, t in user_store.items()
-    ]
-    # sort newest first by created_at if you add it
-    return jsonify({"threads": threads})
+        return jsonify({"threads": []}), 200
+
+    user_id = get_user_id_by_username(username)
+    if not user_id:
+        return jsonify({"threads": []}), 200
+
+    resp = (
+        supabase
+        .table("chat_threads")
+        .select("id, title, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    threads = resp.data or []
+
+    return jsonify({"threads": [{"id": t["id"], "title": t["title"]} for t in threads]})
+
 
 @app.route("/api/chat-threads/<thread_id>", methods=["GET"])
 def get_thread(thread_id):
-    username = request.args.get("username")  # optional or from auth
-    for user, store in CHAT_STORE.items():
-        if thread_id in store:
-            return jsonify({"messages": store[thread_id]["messages"]})
-    return jsonify({"messages": []})
+    # RLS disabled; user_id already enforced via FK and username→id logic
+    resp = (
+        supabase
+        .table("chat_messages")
+        .select("role, content, created_at")
+        .eq("thread_id", thread_id)
+        .order("created_at", desc=False)   # ascending
+        .execute()
+    )
+    backend_msgs = resp.data or []
+
+    messages = []
+    for m in backend_msgs:
+        from_ = "user" if m.get("role") == "user" else "bot"
+        messages.append({
+            "from": from_,
+            "text": m.get("content", ""),
+        })
+
+    return jsonify({"messages": messages})
+
 
 @app.route("/api/chat-threads", methods=["POST"])
 def save_thread():
@@ -623,24 +672,48 @@ def save_thread():
     username = data.get("username")
     thread_id = data.get("thread_id")
     title = data.get("title") or "New chat"
-    messages = data.get("messages") or []
+    frontend_messages = data.get("messages") or []
 
     if not username:
         return jsonify({"error": "username required"}), 400
 
-    if username not in CHAT_STORE:
-        CHAT_STORE[username] = {}
+    user_id = get_user_id_by_username(username)
+    if not user_id:
+        return jsonify({"error": "unknown user"}), 400
 
+    # 1) Create thread if new
     if not thread_id:
         thread_id = str(uuid.uuid4())
+        supabase.table("chat_threads").insert({
+            "id": thread_id,
+            "user_id": user_id,
+            "title": title,
+        }).execute()
+    else:
+        supabase.table("chat_threads").update({
+            "title": title,
+        }).eq("id", thread_id).eq("user_id", user_id).execute()
 
-    CHAT_STORE[username][thread_id] = {
-        "id": thread_id,
-        "title": title,
-        "messages": messages,
-    }
+    # 2) Replace messages for this thread
+    supabase.table("chat_messages").delete().eq("thread_id", thread_id).execute()
+
+    now = datetime.utcnow().isoformat()
+
+    backend_rows = []
+    for m in frontend_messages:
+        role = "user" if m.get("from") == "user" else "assistant"
+        backend_rows.append({
+            "thread_id": thread_id,
+            "role": role,
+            "content": m.get("text", ""),
+            "created_at": now,
+        })
+
+    if backend_rows:
+        supabase.table("chat_messages").insert(backend_rows).execute()
 
     return jsonify({"thread": {"id": thread_id, "title": title}})
+
 
 if __name__ == "__main__":
     app.run(debug=True)

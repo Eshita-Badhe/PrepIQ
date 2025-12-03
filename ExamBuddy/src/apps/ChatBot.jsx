@@ -25,7 +25,9 @@ export default function ChatBot({ username }) {
         console.error("Error loading threads", e);
       }
     }
-    loadThreads();
+    if (username) {
+      loadThreads();
+    }
   }, [username]);
 
   // Load messages when activeThreadId changes
@@ -45,18 +47,45 @@ export default function ChatBot({ username }) {
     loadThreadMessages();
   }, [activeThreadId]);
 
-  function startNewThread() {
-    setActiveThreadId(null);
-    setMessages([
-      { from: "bot", text: "Hi, I am your assistant. How can I help you?" },
-    ]);
-  }
+  // Auto-save current thread when tab/window closes
+  useEffect(() => {
+    function handleBeforeUnload(event) {
+      if (!username) return;
+
+      const userMessages = messages.filter(m => m.from === "user");
+      if (userMessages.length === 0) return; // nothing meaningful to save
+
+      const firstUser = userMessages[0];
+      const title = firstUser.text.slice(0, 40);
+
+      const payload = {
+        username,
+        thread_id: activeThreadId,
+        title,
+        messages,
+      };
+
+      const blob = new Blob([JSON.stringify(payload)], {
+        type: "application/json",
+      });
+
+      navigator.sendBeacon(
+        "http://localhost:5000/api/chat-threads",
+        blob
+      );
+    }
+
+  window.addEventListener("beforeunload", handleBeforeUnload);
+  return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+}, [messages, activeThreadId, username]);
+
 
   async function saveThread(updatedMessages) {
-    // Use first user message as title fallback
-    const firstUser = updatedMessages.find(m => m.from === "user");
-    const title = firstUser ? firstUser.text.slice(0, 40) : "New chat";
+    const userMessages = updatedMessages.filter(m => m.from === "user");
+    if (userMessages.length === 0) return; // do not create empty thread
 
+    const firstUser = userMessages[0];
+    const title = firstUser.text.slice(0, 40);
     try {
       const res = await fetch("http://localhost:5000/api/chat-threads", {
         method: "POST",
@@ -71,7 +100,6 @@ export default function ChatBot({ username }) {
       const data = await res.json();
       if (data.thread) {
         setActiveThreadId(data.thread.id);
-        // refresh thread list
         setThreads(prev => {
           const others = prev.filter(t => t.id !== data.thread.id);
           return [data.thread, ...others];
@@ -82,48 +110,60 @@ export default function ChatBot({ username }) {
     }
   }
 
-  async function handleSend(e) {
-    e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    const userMsg = { from: "user", text: trimmed };
-    const newHistory = [...messages, userMsg];
-
-    setMessages(newHistory);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const res = await fetch("http://localhost:5000/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          username,
-          history: newHistory.map(m => ({
-            role: m.from === "user" ? "user" : "assistant",
-            content: m.text,
-          })),
-        }),
-      });
-
-      const data = await res.json();
-      const botText = data.reply ?? "Error: no reply from server";
-      const updatedMessages = [...newHistory, { from: "bot", text: botText }];
-      setMessages(updatedMessages);
-
-      // Persist thread
-      await saveThread(updatedMessages);
-    } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        { from: "bot", text: "Error contacting server." },
-      ]);
-    } finally {
-      setLoading(false);
+  async function startNewThread() {
+    // Save the current thread before resetting (if it has more than the initial bot msg)
+    if (messages.length > 1) {
+      await saveThread(messages);
     }
+    setActiveThreadId(null);
+    setMessages([
+      { from: "bot", text: "Hi, I am your assistant. How can I help you?" },
+    ]);
   }
+
+async function handleSend(e) {
+  e.preventDefault();
+  const trimmed = input.trim();
+  if (!trimmed) return;
+
+  const userMsg = { from: "user", text: trimmed };
+  const newHistory = [...messages, userMsg];
+
+  setMessages(newHistory);
+  setInput("");
+  setLoading(true);
+
+  try {
+    const res = await fetch("http://localhost:5000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: trimmed,
+        username,
+        history: newHistory.map(m => ({
+          role: m.from === "user" ? "user" : "assistant",
+          content: m.text,
+        })),
+      }),
+    });
+
+    const data = await res.json();
+    const botText = data.reply ?? "Error: no reply from server";
+    const updatedMessages = [...newHistory, { from: "bot", text: botText }];
+    setMessages(updatedMessages);
+
+    // Persist this thread snapshot (only if it has user msgs)
+    await saveThread(updatedMessages);
+  } catch (err) {
+    setMessages(prev => [
+      ...prev,
+      { from: "bot", text: "Error contacting server." },
+    ]);
+  } finally {
+    setLoading(false);
+  }
+}
+
 
   return (
     <div
