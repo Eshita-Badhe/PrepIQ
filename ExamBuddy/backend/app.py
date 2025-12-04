@@ -3,7 +3,7 @@ import random
 import time
 import re
 
-from flask import Flask, request, jsonify, session
+from flask import Flask, json, request, jsonify, session
 from flask_cors import CORS
 from flask_mail import Mail, Message
 from flask_login import LoginManager, UserMixin, login_user, current_user, logout_user
@@ -16,13 +16,17 @@ from datetime import datetime
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-load_dotenv()
-
-import uuid
 from rag_local import embed_local, search_faiss, ingest_single_file
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.colors import HexColor, grey, black
+
+
+load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
@@ -574,6 +578,44 @@ def chat():
     print("Chat request from user:", username)
     history_payload = data.get("history", [])  # [{role, content}]
     thread_id = data.get("thread_id")  # optional, if you start sending it later
+    mode = data.get("mode", "default")  # chat or other modes in future
+    topic = data.get("topic")
+    extra = data.get("extra", "")
+
+    # ========== MIND MAP MODE ==========
+    if mode == "mindmap":
+        if not topic.strip():
+            return jsonify({"error": "Topic is required."}), 400
+
+        try:
+            print(f"[MINDMAP] Starting generation for topic: {topic}")
+            
+            # Step 1: Call LLM for JSON tree
+            mindmap_tree = call_llm_for_mindmap(topic, extra)
+            print(f"[MINDMAP] Tree generated successfully")
+            
+            # Step 2: Generate PDF bytes
+            pdf_bytes = generate_mindmap_pdf_bytes(topic, mindmap_tree)
+            print(f"[MINDMAP] PDF generated ({len(pdf_bytes)} bytes)")
+            
+            # Step 3: Upload to Supabase
+            pdf_url = upload_mindmap_to_supabase(username, topic, pdf_bytes)
+            print(f"[MINDMAP] Uploaded successfully: {pdf_url}")
+            
+            return jsonify({
+                "success": True,
+                "mindmap": mindmap_tree,
+                "pdf_url": pdf_url,
+            }), 200
+
+        except Exception as e:
+            print(f"[MINDMAP FATAL ERROR] {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "error": str(e),
+                "details": "Check server logs for full error."
+            }), 500
 
     if not user_message:
         return jsonify({"reply": "Please enter a question."}), 400
@@ -743,6 +785,206 @@ def save_thread():
         supabase.table("chat_messages").insert(backend_rows).execute()
 
     return jsonify({"thread": {"id": thread_id, "title": title}})
+
+# ---------- Mind Map ----------
+def extract_json_from_response(text: str) -> dict:
+    """
+    Extract JSON from LLM response, handling code fences and noise.
+    Returns dict or raises Exception with detailed error.
+    """
+    text = text.strip()
+
+    # Remove code fences (``` or ```json)
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\s*```$', '', text, flags=re.MULTILINE)
+    text = text.strip()
+
+    # Try to find JSON object in the text (handles trailing text)
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+    else:
+        json_str = text
+
+    try:
+        data = json.loads(json_str)
+        return data
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        print(f"Attempted to parse: {json_str[:200]}...")
+        raise ValueError(f"Failed to parse JSON from LLM response: {e}")
+
+def build_mindmap_prompt(topic: str, extra: str) -> str:
+    """
+    Build a crystal-clear prompt for JSON mind map generation.
+    """
+    prompt = f"""Create a hierarchical mind map for exam preparation on: {topic}
+
+            Return ONLY a valid JSON object (no other text) with this exact structure:
+            {{
+            "label": "Main Topic Name",
+            "children": [
+                {{
+                "label": "Subtopic 1",
+                "children": [
+                    {{"label": "Key point 1.1", "children": []}},
+                    {{"label": "Key point 1.2", "children": []}}
+                ]
+                }},
+                {{
+                "label": "Subtopic 2",
+                "children": [
+                    {{"label": "Key point 2.1", "children": []}}
+                ]
+                }}
+            ]
+            }}
+
+            Guidelines:
+            - Each label should be 5-10 words max
+            - Go 2-3 levels deep
+            - Use clear, exam-focused terminology
+            - Return ONLY the JSON, nothing else"""
+
+    if extra:
+        prompt += f"Additional instructions: {extra}"
+
+    return prompt
+
+
+def call_llm_for_mindmap(topic: str, extra: str) -> dict:
+    """
+    Call LLM and robustly parse JSON response.
+    """
+    prompt = build_mindmap_prompt(topic, extra)
+    
+    try:
+        resp = llm.invoke(prompt)
+        raw_response = resp.content.strip()
+        
+        print(f"[MINDMAP] Raw LLM response:{raw_response}")
+        
+        # Extract and parse JSON
+        mindmap_tree = extract_json_from_response(raw_response)
+        
+        print(f"[MINDMAP] Parsed tree successfully: {json.dumps(mindmap_tree, indent=2)}")
+        return mindmap_tree
+        
+    except Exception as e:
+        print(f"[MINDMAP ERROR] LLM call failed: {e}")
+        # Fallback minimal tree
+        fallback = {
+            "label": topic,
+            "children": [
+                {"label": "Main concepts", "children": []},
+                {"label": "Key definitions", "children": []},
+                {"label": "Important formulas", "children": []}
+            ]
+        }
+        print(f"[MINDMAP] Using fallback tree: {json.dumps(fallback, indent=2)}")
+        return fallback
+
+def draw_node(c: canvas.Canvas, node: dict, x: float, y: float,
+              indent: float, line_height: float = 18, max_width: float = 500) -> float:
+    """
+    Recursively draw mind map nodes on PDF canvas.
+    """
+    label = str(node.get("label", "Untitled"))
+    
+    # Wrap long labels
+    if len(label) > 60:
+        label = label[:60] + "..."
+    
+    # Determine font/indent based on depth
+    depth_level = int(indent / 12)
+    if depth_level == 0:
+        c.setFont("Helvetica-Bold", 12)
+        prefix = "●"
+    elif depth_level == 1:
+        c.setFont("Helvetica-Bold", 11)
+        prefix = "◆"
+    else:
+        c.setFont("Helvetica", 10)
+        prefix = "○"
+    
+    # Draw the node
+    c.drawString(x + indent, y, f"{prefix} {label}")
+    y -= line_height
+
+    # Process children
+    children = node.get("children") or []
+    for child in children:
+        # Page break if needed
+        if y < 60:
+            c.showPage()
+            y = A4 - 50
+            c.setFont("Helvetica", 10)
+        
+        y = draw_node(c, child, x, y, indent + 20, line_height, max_width)
+    
+    return y
+
+def generate_mindmap_pdf_bytes(topic: str, mindmap: dict) -> bytes:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    # Title
+    c.setFont("Helvetica-Bold", 18)
+    c.setFillColor(HexColor("#2563eb"))  # Use HexColor directly
+    c.drawString(50, height - 40, f"Mind Map: {topic}")
+    
+    # Subtitle
+    c.setFont("Helvetica", 10)
+    c.setFillColor(grey)  # Use grey directly
+    c.drawString(50, height - 60, "Exam preparation guide")
+    
+    # Draw the tree
+    c.setFillColor(black)  # Use black directly
+    c.setFont("Helvetica", 11)
+    y = height - 90
+    y = draw_node(c, mindmap, x=50, y=y, indent=0, line_height=18)
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
+def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> str:
+    """
+    Upload mind map PDF to Supabase Storage.
+    Mirrors your existing upload_docs logic.
+    Returns public URL.
+    """
+
+    # Path: Username_MindMaps/Topic/mindmap.pdf
+    file_path = f"{username}_MindMaps/{topic}/mindmap.pdf"
+    try:
+        # Upload with upsert=true to overwrite on regenerate
+        res = supabase.storage.from_(STORAGE_BUCKET).upload(
+            path=file_path,
+            file=pdf_bytes,
+            file_options={
+                "content-type": "application/pdf",
+                "cache-control": "3600",
+                "upsert": "true",
+            },
+        )
+        
+        print(f"[MINDMAP] Uploaded to Supabase: {file_path}")
+        
+        # Build public URL (same pattern as your notes)
+        public_url = (
+            f"{SUPABASE_URL}/storage/v1/object/public/"
+            f"{STORAGE_BUCKET}/{file_path}"
+        )
+        
+        return public_url
+
+    except Exception as e:
+        print(f"[MINDMAP UPLOAD ERROR] {e}")
+        raise
 
 
 if __name__ == "__main__":

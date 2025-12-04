@@ -18,6 +18,7 @@ import "./styles/win7.css";
 import wallpaperImg from "./assets/wallpaper.jpg";
 import { DraggableCalendar, renderYearCalendar } from "./components/Calendar";
 import GenerateNotes from "./apps/GenerateNotes";
+import GenerateMindMap from "./apps/GenerateMindMaps";
 
 const START_ORB = "./start.jpg";
 
@@ -29,6 +30,7 @@ const desktopIcons = [
   { id: "chatbot", title: "Chatbot Assistant", icon: "🤖", app: "ChatBot" },
   { id: "upload", title: "Upload Resources", icon: "📤", app: "UploadDocs" },
   { id: "generateNotes", title: "Generate Notes", icon: "📝", app: "GenerateNotes" },
+  { id: "generateMindMap", title: "Generate Mind Map", icon: "🧠", app: "GenerateMindMap" },
   { id: "note", title: "Notes", icon: "🗒️", app: "Notepad" },
   { id: "browser", title: "Browser", icon: "🌐", app: "Browser" },
   { id: "calculator", title: "Calculator", icon: "🧮", app: "Calculator" },
@@ -42,6 +44,7 @@ const appRegistry = {
   ChatBot: ChatBot,
   UploadDocs: UploadDocs,
   GenerateNotes: GenerateNotes,
+  GenerateMindMap: GenerateMindMap,
   FileViewerApp: FileViewerApp,
   Notepad: NotepadApp,
   Calculator: CalculatorApp,
@@ -286,6 +289,9 @@ export default function Win7Desktop() {
         }
         if (name === "GenerateNotes") {
           return <GenerateNotes username={currentUser?.username} />;
+        }
+        if (name === "GenerateMindMap") {
+          return <GenerateMindMap username={currentUser?.username} />;
         }
         return <AppComponent openWindow={wmOpenWindow} {...extraProps} />;
       },
