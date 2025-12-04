@@ -391,15 +391,19 @@ def api_upload_docs():
             filename = os.path.basename(f.filename)
             key = base_prefix + filename
 
-
+            # delete old version (ignore failure)
+            try:
+                storage.remove(key)   # if this errors, print and continue
+            except Exception as e:
+                print("DELETE BEFORE REPLACE ERROR for", key, ":", e)
+                
             file_bytes = f.read()
             print("UPLOADING", key, "size:", len(file_bytes))
 
             resp = storage.upload(
                 key,
                 file_bytes,
-                {"content-type": f.mimetype or "application/octet-stream",
-                 "upsert": True},
+                {"content-type": f.mimetype or "application/octet-stream"},
             )
             print("UPLOAD RESP for", key, "=>", resp)
 
