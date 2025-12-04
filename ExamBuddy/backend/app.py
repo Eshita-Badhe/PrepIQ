@@ -351,181 +351,170 @@ def api_logout():
         print("LOGOUT ERROR:", e)
         return jsonify({"success": False, "msg": "Internal logout error"}), 500
 
-
+def normalize_title(t: str) -> str:
+    return t.strip().replace(" ", "_")
 # ---------- Upload Docs to Supabase Storage ----------
 @app.route("/api/upload-docs", methods=["POST"])
-def upload_docs():
-    """
-    Expects form-data:
-      - username (string)
-      - title (string)
-      - files[] (one or more files)
-
-    Saves to Supabase Storage bucket "user-resources" under path:
-      username_title/original_filename
-
-    If a file with the same path already exists, it is deleted first,
-    then the new file is uploaded. Also triggers local RAG ingestion
-    for each uploaded file.
-    """
-    if "username" not in request.form or "title" not in request.form:
-        return jsonify({"success": False, "msg": "username and title required"}), 400
-
-    username = request.form["username"].strip()
-    title = request.form["title"].strip()
-    files = request.files.getlist("files")
-    if not files:
-        return jsonify({"success": False, "msg": "No files uploaded"}), 400
-
-    # Verify user exists
-    user_data, user_err = safe_single_row("users", "id", username=username)
-    if user_err:
-        return jsonify({"success": False, "msg": "Internal user check error"}), 500
-    if not user_data:
-        return jsonify({"success": False, "msg": "User not found"}), 404
+def api_upload_docs():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
 
     if not supabase_available():
-        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+        return jsonify(success=False, msg="Supabase not configured"), 500
 
-    folder_prefix = f"{username}_{title}".replace(" ", "_")
-    uploaded_paths = []
+    root_type = request.form.get("root_type", "").strip() or "uploaded"
+    if root_type not in {"uploaded", "generated_notes", "generated_sample_papers"}:
+        return jsonify(success=False, msg="Invalid root_type"), 400
 
-    for f in files:
-        filename = f.filename
-        if not filename:
-            continue
+    username_form = request.form.get("username", "").strip()
+    title = request.form.get("title", "").strip()
+    files = request.files.getlist("files")
 
-        path_in_bucket = f"{folder_prefix}/{filename}"
+    if not username_form or not title or not files:
+        return jsonify(success=False, msg="Missing username, title, or files"), 400
 
-        try:
-            # 1) Try to remove existing file at this path (if any)
-            try:
-                # remove() expects a list of paths
-                del_res = supabase.storage.from_(STORAGE_BUCKET).remove([path_in_bucket])
-                # Optional: log deletion result
-                print("DELETE (if existed):", path_in_bucket, del_res)
-            except Exception as de:
-                # Do not fail upload if delete fails; just log it
-                print("Supabase delete error for", path_in_bucket, ":", de)
+    username = normalize_username(current_user.username)
+    title_norm = normalize_title(title)
 
-            # 2) Upload new file bytes
+    # uploaded/<user>/<title>/..., generated_notes/<user>/<title>/..., etc.
+    base_prefix = f"{root_type}/{username}/{title_norm}/"
+
+    saved_paths = []
+
+    try:
+        storage = supabase.storage.from_(STORAGE_BUCKET)
+
+        for f in files:
+            if not f.filename:
+                continue
+
+            filename = os.path.basename(f.filename)
+            key = base_prefix + filename
+
+
             file_bytes = f.read()
-            res = supabase.storage.from_(STORAGE_BUCKET).upload(
-                path=path_in_bucket,
-                file=file_bytes,
-                file_options={
-                    "content-type": f.mimetype,
-                },
+            print("UPLOADING", key, "size:", len(file_bytes))
+
+            resp = storage.upload(
+                key,
+                file_bytes,
+                {"content-type": f.mimetype or "application/octet-stream",
+                 "upsert": True},
             )
-            if isinstance(res, dict) and res.get("error"):
-                print("Supabase storage error:", res["error"])
-                return jsonify({"success": False, "msg": str(res["error"])}), 500
+            print("UPLOAD RESP for", key, "=>", resp)
 
-            uploaded_paths.append(path_in_bucket)
-            print("UPLOAD OK:", username, title, path_in_bucket)
+            if isinstance(resp, dict) and resp.get("error"):
+                return jsonify(success=False, msg=str(resp["error"])), 500
 
-            # 3) Trigger local RAG ingestion (download -> chunk -> embed_local -> FAISS)
+            saved_paths.append(key)
+
+            # ingest into embeddings
             try:
                 ingest_single_file(
                     username=username,
-                    title=title,
-                    path_in_bucket=path_in_bucket,
+                    title=title_norm,
+                    path_in_bucket=key,
                 )
-            except Exception as ie:
-                # Log but don't fail the upload
-                print("INGEST ERROR for", path_in_bucket, ":", ie)
+            except Exception as e:
+                print("INGEST ERROR for", key, ":", e)
 
-        except Exception as e:
-            print("UPLOAD ERROR for", path_in_bucket, ":", e)
-            return jsonify({"success": False, "msg": "Upload failed: " + str(e)}), 500
-        finally:
-            f.close()
+        if not saved_paths:
+            return jsonify(success=False, msg="No valid files uploaded"), 400
 
-    return jsonify({"success": True, "paths": uploaded_paths}), 200
-
-@app.route("/api/user-folders", methods=["GET"])
-def api_user_folders():
-    if not current_user.is_authenticated:
-        return jsonify({"success": False, "msg": "Not authenticated"}), 401
-
-    username = current_user.username
+        return jsonify(success=True, paths=saved_paths)
+    except Exception as e:
+        print("UPLOAD DOCS ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
     
-    username = normalize_username(username)
+@app.route("/api/list-root-folders", methods=["GET"])
+def api_list_root_folders():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    root_type = request.args.get("root_type", "").strip()
+    if root_type not in {"uploaded", "generated_notes", "generated_sample_papers"}:
+        return jsonify(success=False, msg="Invalid root_type"), 400
 
     if not supabase_available():
-        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+        return jsonify(success=False, msg="Supabase not configured"), 500
 
-    try:
-      prefix = f"{username}_"
+    username = normalize_username(current_user.username)
+    prefix = f"{root_type}/{username}/"     # e.g. "uploaded/Eshita_Badhe/"
 
-      # For your supabase-py version: only path argument
-      resp = supabase.storage.from_(STORAGE_BUCKET).list("")  # root of bucket
+    # IMPORTANT: pass prefix to list; returned "name" will be RELATIVE
+    resp = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
 
-      # resp is usually a list of dicts: [{"name": "username_title/file.pdf", ...}, ...]
-      objects = resp if isinstance(resp, list) else resp.get("data", [])
+    if isinstance(resp, list):
+        objects = resp
+    elif isinstance(resp, dict):
+        objects = resp.get("data", []) or []
+    else:
+        objects = []
 
-      folders = set()
-      for obj in objects:
-          name = obj.get("name", "")
-          if not name.startswith(prefix):
-              continue
-          parts = name.split("/", 1)
-          if len(parts) >= 1:
-              folder_full = parts[0]  # "username_title"
-              title_raw = folder_full[len(prefix):]
-              title = title_raw.replace("_", " ")
-              folders.add(title)
+    print("ROOT TYPE:", root_type)
+    print("PREFIX USED:", prefix)
+    print("RAW RESP:", resp)
+    for o in objects:
+        print("OBJ NAME:", o.get("name"))
 
-      return jsonify({
-          "success": True,
-          "username": username,
-          "folders": sorted(list(folders)),
-      })
-    except Exception as e:
-      print("LIST USER FOLDERS ERROR:", e)
-      return jsonify({"success": False, "msg": str(e)}), 500
+    folders = set()
+    for obj in objects:
+        # For prefix listing, 'name' is like "Cyber_Security/CHAPTER 5.pdf"
+        name = obj.get("name", "") or ""
+        rest = name  # already relative to prefix
+        if not rest:
+            continue
 
-@app.route("/api/user-folder-files", methods=["GET"])
-def api_user_folder_files():
+        folder_name = rest.split("/", 1)[0]   # "Cyber_Security"
+        if folder_name:
+            folders.add(folder_name)
+
+    return jsonify(success=True, folders=sorted(folders))
+
+@app.route("/api/list-root-folder-files", methods=["GET"])
+def api_list_root_folder_files():
     if not current_user.is_authenticated:
-        return jsonify({"success": False, "msg": "Not authenticated"}), 401
+        return jsonify(success=False, msg="Not authenticated"), 401
 
-    title = request.args.get("title", "").strip()
-    if not title:
-        return jsonify({"success": False, "msg": "Missing title"}), 400
+    root_type = request.args.get("root_type", "").strip()
+    folder = request.args.get("folder", "").strip()   # e.g. "Cyber_Security"
 
-    username = current_user.username
-    
-    username = normalize_username(username)
+    if root_type not in {"uploaded", "generated_notes", "generated_sample_papers"}:
+        return jsonify(success=False, msg="Invalid root_type"), 400
+    if not folder:
+        return jsonify(success=False, msg="Missing folder"), 400
 
     if not supabase_available():
-        return jsonify({"success": False, "msg": "Supabase not configured"}), 500
+        return jsonify(success=False, msg="Supabase not configured"), 500
 
-    try:
-        folder_prefix = f"{username}_{title}".replace(" ", "_") + "/"
+    username = normalize_username(current_user.username)
+    prefix = f"{root_type}/{username}/{folder}/"      # e.g. uploaded/Eshita_Badhe/Cyber_Security/
 
-        # List objects under that prefix
-        resp = supabase.storage.from_(STORAGE_BUCKET).list(folder_prefix)
-        objects = resp if isinstance(resp, list) else resp.get("data", [])
+    resp = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
 
-        files = []
-        for obj in objects:
-            name = obj.get("name", "")
-            # name is like "username_title/file.pdf" -> get just file name
-            file_name = name.split("/", 1)[1] if "/" in name else name
-            full_path = folder_prefix + file_name
-            print("Found file:", file_name, "at", full_path)
-            files.append({
-                "name": file_name,
-                "full_path": full_path,
-                "size": obj.get("metadata", {}).get("size"),
-                "last_modified": obj.get("updated_at") or obj.get("created_at")
-            })
+    if isinstance(resp, list):
+        objects = resp
+    elif isinstance(resp, dict):
+        objects = resp.get("data", []) or []
+    else:
+        objects = []
 
-        return jsonify({"success": True, "files": files})
-    except Exception as e:
-        print("LIST USER FOLDER FILES ERROR:", e)
-        return jsonify({"success": False, "msg": str(e)}), 500
+    files = []
+    for obj in objects:
+        # For prefix listing, 'name' is RELATIVE to prefix, e.g. "CHAPTER 5.pdf"
+        name = obj.get("name", "") or ""
+        if not name or "/" in name:
+            # ignore nested subfolders for now
+            continue
+
+        files.append({
+            "name": name,
+            "full_path": prefix + name,
+            "size": (obj.get("metadata") or {}).get("size"),
+            "last_modified": obj.get("updated_at") or obj.get("created_at"),
+        })
+
+    return jsonify(success=True, files=files)
 
 @app.route("/api/file-url", methods=["GET"])
 def api_file_url():
@@ -539,26 +528,20 @@ def api_file_url():
     if not supabase_available():
         return jsonify(success=False, msg="Supabase not configured"), 500
 
-    try:
-        # For your supabase-py version this returns the full public URL as a string
-        public_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
+    public_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
+    if not public_url:
+        return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
 
-        print("get_public_url raw:", public_url)
+    return jsonify(success=True, url=public_url)
 
-        if not public_url:
-            return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
-
-        return jsonify(success=True, url=public_url)
-    except Exception as e:
-        print("FILE URL ERROR:", e)
-        return jsonify(success=False, msg=str(e)), 500
 
 # ---------- Chat Bot ----------
 llm = ChatGroq(
     groq_api_key=GROQ_API_KEY,
     model_name="llama-3.1-8b-instant",
     temperature=0.2,
-    max_tokens=512,
+    max_tokens=4096,
+    timeout=60,
 )
 
 SYSTEM_PROMPT = (
@@ -786,6 +769,75 @@ def save_thread():
 
     return jsonify({"thread": {"id": thread_id, "title": title}})
 
+# ---------- NOTES --------------
+@app.route("/api/generate-notes", methods=["POST"])
+def generate_notes_endpoint():
+    """
+    Dedicated endpoint for COMPLETE note generation.
+    Returns full, untruncated notes.
+    """
+    data = request.get_json() or {}
+    topic = data.get("topic", "").strip()
+    note_format = data.get("note_format", "standard")
+    custom_prompt = data.get("custom_prompt", "").strip()
+    username = data.get("username", "User")
+
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    print(f"[GENERATE-NOTES] Topic: {topic}, Format: {note_format}")
+
+    try:
+        # Build a COMPLETE, DETAILED prompt for full notes
+        system_msg = (
+            "You are an expert exam preparation tutor. "
+            "Generate COMPREHENSIVE, DETAILED, and COMPLETE study notes. "
+            "Do NOT cut short. Include everything relevant."
+        )
+
+        base_prompt = f"""Generate detailed, exam-focused {note_format} study notes on: {topic}
+
+REQUIREMENTS:
+- Be COMPREHENSIVE and thorough
+- Include definitions, concepts, examples, formulas, and key points
+- Use clear headings and bullet points
+- Go into depth on each topic
+- Do NOT abbreviate or cut short
+- For {note_format} format: Use structured layout"""
+
+        if custom_prompt:
+            base_prompt += f"Additional instructions: {custom_prompt}"
+            base_prompt += "Generate the COMPLETE notes now (do not abbreviate):"
+
+        # Call LLM with HIGH token limit
+        resp = llm.invoke(
+            [
+                SystemMessage(content=system_msg),
+                HumanMessage(content=base_prompt),
+            ]
+        )
+
+        notes_text = resp.content.strip()
+
+        if not notes_text or len(notes_text) < 100:
+            print(f"[WARNING] Notes seem incomplete: {len(notes_text)} chars")
+
+        print(f"[GENERATE-NOTES] Generated {len(notes_text)} characters")
+
+        return jsonify({
+            "success": True,
+            "notes": notes_text,
+            "length": len(notes_text),
+            "topic": topic,
+            "format": note_format,
+        }), 200
+
+    except Exception as e:
+        print(f"[GENERATE-NOTES ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 # ---------- Mind Map ----------
 def extract_json_from_response(text: str) -> dict:
     """
@@ -950,7 +1002,6 @@ def generate_mindmap_pdf_bytes(topic: str, mindmap: dict) -> bytes:
     buf.seek(0)
     return buf.read()
 
-
 def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> str:
     """
     Upload mind map PDF to Supabase Storage.
@@ -985,7 +1036,6 @@ def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> s
     except Exception as e:
         print(f"[MINDMAP UPLOAD ERROR] {e}")
         raise
-
 
 if __name__ == "__main__":
     app.run(debug=True)

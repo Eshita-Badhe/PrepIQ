@@ -68,59 +68,65 @@ export default function GenerateNotes({ username}) {
     }
   };
 
-  // ---------- generate + auto-upload ----------
   const handleGenerate = async (e) => {
-    e.preventDefault();
-    if (!topic.trim()) {
-      setStatusType("err");
-      setStatus("Please enter a topic.");
-      return;
+  e.preventDefault();
+  if (!topic.trim()) {
+    setStatusType("err");
+    setStatus("Please enter a topic.");
+    return;
+  }
+
+  setLoading(true);
+  setStatus("Generating comprehensive notes...");
+  setStatusType("");
+  setNotes("");
+
+  try {
+    // 🔄 Use NEW dedicated endpoint instead of /chat
+    const res = await fetch(`${API_BASE}/api/generate-notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topic,
+        note_format: noteFormat,
+        custom_prompt: customPrompt,
+        username,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server error: ${res.status}`);
     }
 
-    setLoading(true);
-    setStatus("");
-    setStatusType("");
-
-    try {
-      const message = `Generate well-structured, exam-friendly ${noteFormat} study notes on the topic "${topic}". 
-Use clear headings, bullet points, definitions, and examples. 
-${customPrompt || ""}`.trim();
-
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          username,
-          history: [],
-          thread_id: null,
-        }),
-      }); // standard fetch usage for network requests [web:43]
-
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
-      }
-
-      const data = await res.json();
-      const generated = data.reply || "No notes generated.";
-      setNotes(generated);
-
-      // 🔁 auto-upload as soon as notes are generated
-      await uploadNotesIfNeeded(generated);
-
-      if (!statusType || statusType === "ok") {
-        // if upload succeeded or not yet overridden
-        setStatusType("ok");
-        setStatus("Notes generated and (if new) uploaded.");
-      }
-    } catch (err) {
-      console.error("Generate error:", err);
-      setStatusType("err");
-      setStatus(`Failed to generate notes: ${err.message}`);
-    } finally {
-      setLoading(false);
+    const data = await res.json();
+    
+    if (!data.success || !data.notes) {
+      throw new Error(data.error || "No notes generated");
     }
-  };
+
+    const generatedNotes = data.notes;
+    
+    console.log(`✅ Generated ${generatedNotes.length} characters`);
+    
+    setNotes(generatedNotes);
+
+    // 🔁 Auto-upload after generation
+    await uploadNotesIfNeeded(generatedNotes);
+
+    if (!statusType || statusType === "ok") {
+      setStatusType("ok");
+      setStatus(
+        `✓ Notes generated successfully (${generatedNotes.length} characters)`
+      );
+    }
+  } catch (err) {
+    console.error("Generate error:", err);
+    setStatusType("err");
+    setStatus(`Failed to generate notes: ${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleRegenerate = () => {
     // Keep topic/format/customPrompt so user can tweak and regenerate

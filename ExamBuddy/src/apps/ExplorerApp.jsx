@@ -2,74 +2,114 @@
 import React, { useEffect, useState } from "react";
 import FileViewerApp from "./FileViewerApp";
 
-export function Explorer({ openWindow }) {
-  const [folders, setFolders] = useState([]);
-  const [loadingFolders, setLoadingFolders] = useState(true);
-  const [folderError, setFolderError] = useState("");
+const ROOTS = [
+  { id: "uploaded", label: "Uploaded" },
+  { id: "generated_notes", label: "Generated Notes" },
+  { id: "generated_sample_papers", label: "Sample Papers" },
+];
 
+export function Explorer({ openWindow }) {
+  const [selectedRoot, setSelectedRoot] = useState("uploaded");
+  const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [files, setFiles] = useState([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [fileError, setFileError] = useState("");
+  const [error, setError] = useState("");
 
-  // Load folders
+  // Load folders whenever root changes
   useEffect(() => {
-    async function loadFolders() {
-      try {
-        const res = await fetch("http://localhost:5000/api/user-folders", {
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (!data.success) setFolderError(data.msg || "Failed to load folders");
-        else setFolders(data.folders || []);
-      } catch (e) {
-        setFolderError("Network error: " + e.message);
-      } finally {
-        setLoadingFolders(false);
-      }
-    }
-    loadFolders();
-  }, []);
+    loadRootFolders(selectedRoot);
+  }, [selectedRoot]);
 
-  // Load files in a folder
-  async function openFolder(title) {
-    setSelectedFolder(title);
+  async function loadRootFolders(rootType) {
+    setLoadingFolders(true);
+    setError("");
+    setFolders([]);
     setFiles([]);
-    setFileError("");
-    setLoadingFiles(true);
+    setSelectedFolder(null);
+
     try {
-      const params = new URLSearchParams({ title });
+      const params = new URLSearchParams({ root_type: rootType });
       const res = await fetch(
-        "http://localhost:5000/api/user-folder-files?" + params.toString(),
+        "http://localhost:5000/api/list-root-folders?" + params.toString(),
         { credentials: "include" }
       );
       const data = await res.json();
-      if (!data.success) setFileError(data.msg || "Failed to load files");
+      if (!data.success) setError(data.msg || "Failed to load folders");
+      else setFolders(data.folders || []);
+    } catch (e) {
+      setError("Network error: " + e.message);
+    } finally {
+      setLoadingFolders(false);
+    }
+  }
+
+  async function openFolder(folder) {
+    setSelectedFolder(folder);
+    setFiles([]);
+    setError("");
+    setLoadingFiles(true);
+
+    try {
+      const params = new URLSearchParams({
+        root_type: selectedRoot,
+        folder,
+      });
+      const res = await fetch(
+    "http://localhost:5000/api/list-root-folder-files?" + params.toString(),
+    { credentials: "include" }
+  );
+      const data = await res.json();
+      if (!data.success) setError(data.msg || "Failed to load files");
       else setFiles(data.files || []);
     } catch (e) {
-      setFileError("Network error: " + e.message);
+      setError("Network error: " + e.message);
     } finally {
       setLoadingFiles(false);
     }
   }
 
-  // Open file in new window
   function openFile(file) {
-    console.log("Opening file window for:", file);
     openWindow({
       name: file.name,
       content: () => (
-        <FileViewerApp
-          fullPath={file.full_path}
-          fileName={file.name}
-        />
+        <FileViewerApp fullPath={file.full_path} fileName={file.name} />
       ),
     });
   }
 
   return (
     <div style={{ display: "flex", height: "100%", fontSize: 13 }}>
-      {/* Folders */}
+      {/* Column 1: Roots */}
+      <div
+        style={{
+          width: 180,
+          borderRight: "1px solid #ddd",
+          padding: 8,
+          overflowY: "auto",
+        }}
+      >
+        {ROOTS.map((root) => (
+          <div
+            key={root.id}
+            onClick={() => setSelectedRoot(root.id)}
+            style={{
+              padding: "6px 8px",
+              borderRadius: 4,
+              cursor: "pointer",
+              background:
+                selectedRoot === root.id
+                  ? "rgba(50,120,220,0.15)"
+                  : "transparent",
+            }}
+          >
+            📁 {root.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Column 2: Folders for selected root */}
       <div
         style={{
           width: 220,
@@ -78,40 +118,51 @@ export function Explorer({ openWindow }) {
           overflowY: "auto",
         }}
       >
+        <div style={{ fontWeight: "bold", marginBottom: 6 }}>
+          {ROOTS.find((r) => r.id === selectedRoot)?.label}
+        </div>
+
         {loadingFolders && <div>Loading folders...</div>}
-        {folderError && <div style={{ color: "red" }}>{folderError}</div>}
-        {!loadingFolders && !folderError && folders.length === 0 && (
+
+        {error && (
+          <div style={{ color: "red", marginBottom: 4 }}>{error}</div>
+        )}
+
+        {!loadingFolders && !error && folders.length === 0 && (
           <div style={{ color: "#666" }}>No folders yet.</div>
         )}
-        {folders.map((title) => (
+
+        {folders.map((folder) => (
           <div
-            key={title}
-            onDoubleClick={() => openFolder(title)}
+            key={folder}
+            onDoubleClick={() => openFolder(folder)}
             style={{
               padding: "6px 8px",
               borderRadius: 4,
               cursor: "pointer",
               background:
-                selectedFolder === title
+                selectedFolder === folder
                   ? "rgba(50,120,220,0.15)"
                   : "transparent",
             }}
           >
-            📁 {title}
+            📁 {folder}
           </div>
         ))}
       </div>
 
-      {/* Files */}
+      {/* Column 3: Files in selected folder */}
       <div style={{ flex: 1, padding: 8, overflowY: "auto" }}>
-        
+        <div style={{ fontWeight: "bold", marginBottom: 6 }}>
+          {selectedFolder || "No folder selected"}
+        </div>
+
         {selectedFolder && loadingFiles && <div>Loading files...</div>}
-        {selectedFolder && fileError && (
-          <div style={{ color: "red" }}>{fileError}</div>
-        )}
-        {selectedFolder && !loadingFiles && !fileError && files.length === 0 && (
+
+        {selectedFolder && !loadingFiles && files.length === 0 && !error && (
           <div style={{ color: "#666" }}>No files in this folder.</div>
         )}
+
         {selectedFolder && files.length > 0 && (
           <ul style={{ listStyle: "none", padding: 0 }}>
             {files.map((f) => (

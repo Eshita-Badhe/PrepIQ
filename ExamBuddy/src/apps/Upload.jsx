@@ -12,6 +12,7 @@ export default function UploadDocs({ username }) {
   }
 
   async function handleSubmit(e) {
+    setStatus("Uploading...")
     e.preventDefault();
     if (!username || !title || files.length === 0) {
       setStatusType("err");
@@ -21,11 +22,13 @@ export default function UploadDocs({ username }) {
     const formData = new FormData();
     formData.append("username", username);
     formData.append("title", title);
+    formData.append("root_type", "uploaded"); 
     files.forEach((f) => formData.append("files", f));
     try {
       const res = await fetch("http://localhost:5000/api/upload-docs", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
       const data = await res.json();
       if (data.success) {
