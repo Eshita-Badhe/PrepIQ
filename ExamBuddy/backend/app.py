@@ -25,6 +25,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+
 # ---------- Flask setup ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_dev_key")
@@ -355,9 +356,13 @@ def upload_docs():
       - username (string)
       - title (string)
       - files[] (one or more files)
+
     Saves to Supabase Storage bucket "user-resources" under path:
       username_title/original_filename
-    Also triggers local RAG ingestion for each uploaded file.
+
+    If a file with the same path already exists, it is deleted first,
+    then the new file is uploaded. Also triggers local RAG ingestion
+    for each uploaded file.
     """
     if "username" not in request.form or "title" not in request.form:
         return jsonify({"success": False, "msg": "username and title required"}), 400
@@ -385,13 +390,28 @@ def upload_docs():
         filename = f.filename
         if not filename:
             continue
+
         path_in_bucket = f"{folder_prefix}/{filename}"
+
         try:
+            # 1) Try to remove existing file at this path (if any)
+            try:
+                # remove() expects a list of paths
+                del_res = supabase.storage.from_(STORAGE_BUCKET).remove([path_in_bucket])
+                # Optional: log deletion result
+                print("DELETE (if existed):", path_in_bucket, del_res)
+            except Exception as de:
+                # Do not fail upload if delete fails; just log it
+                print("Supabase delete error for", path_in_bucket, ":", de)
+
+            # 2) Upload new file bytes
             file_bytes = f.read()
             res = supabase.storage.from_(STORAGE_BUCKET).upload(
                 path=path_in_bucket,
                 file=file_bytes,
-                file_options={"content-type": f.mimetype},
+                file_options={
+                    "content-type": f.mimetype,
+                },
             )
             if isinstance(res, dict) and res.get("error"):
                 print("Supabase storage error:", res["error"])
@@ -400,7 +420,7 @@ def upload_docs():
             uploaded_paths.append(path_in_bucket)
             print("UPLOAD OK:", username, title, path_in_bucket)
 
-            # Trigger local RAG ingestion (download -> chunk -> embed_local -> FAISS)
+            # 3) Trigger local RAG ingestion (download -> chunk -> embed_local -> FAISS)
             try:
                 ingest_single_file(
                     username=username,
@@ -547,8 +567,11 @@ SYSTEM_PROMPT = (
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
+    print("Chat request data:", data)
     user_message = data.get("message", "").strip()
+    print("User message:", user_message)
     username = data.get("username")
+    print("Chat request from user:", username)
     history_payload = data.get("history", [])  # [{role, content}]
     thread_id = data.get("thread_id")  # optional, if you start sending it later
 

@@ -17,6 +17,7 @@ import {
 import "./styles/win7.css";
 import wallpaperImg from "./assets/wallpaper.jpg";
 import { DraggableCalendar, renderYearCalendar } from "./components/Calendar";
+import GenerateNotes from "./apps/GenerateNotes";
 
 const START_ORB = "./start.jpg";
 
@@ -27,6 +28,7 @@ const desktopIcons = [
   { id: "profile", title: "User Profile", icon: "👤", app: "Profile" },
   { id: "chatbot", title: "Chatbot Assistant", icon: "🤖", app: "ChatBot" },
   { id: "upload", title: "Upload Resources", icon: "📤", app: "UploadDocs" },
+  { id: "generateNotes", title: "Generate Notes", icon: "📝", app: "GenerateNotes" },
   { id: "note", title: "Notes", icon: "🗒️", app: "Notepad" },
   { id: "browser", title: "Browser", icon: "🌐", app: "Browser" },
   { id: "calculator", title: "Calculator", icon: "🧮", app: "Calculator" },
@@ -39,6 +41,7 @@ const appRegistry = {
   Explorer: Explorer,
   ChatBot: ChatBot,
   UploadDocs: UploadDocs,
+  GenerateNotes: GenerateNotes,
   FileViewerApp: FileViewerApp,
   Notepad: NotepadApp,
   Calculator: CalculatorApp,
@@ -71,7 +74,7 @@ function Taskbar({
   time,
   date,
   onToggleCalendar,
-}) {
+}) {          
   return (
     <div className={`taskbar${darkMode ? " dark" : ""}`}>
       {/* Start orb + task buttons */}
@@ -118,7 +121,7 @@ function Taskbar({
                   justifyContent: "center",
                 }}
               >
-                {w.name[0]}
+                {w.icon || "🗔"}
               </div>
               <div
                 style={{
@@ -132,7 +135,8 @@ function Taskbar({
                 {w.name}
               </div>
             </div>
-          ))}
+          )
+        )}
         </div>
       </div>
 
@@ -208,6 +212,23 @@ export default function Win7Desktop() {
     setScreensaverOpen(true);
     setStartOpen(false);
   }
+  
+  useEffect(() => {
+  const handleOpenChatbot = (e) => {
+    const username = e?.detail?.username || "User";
+
+    openWindow({
+      id: `chatbot-${Date.now()}`,
+      name: "ChatBot",
+      title: "💬 Chatbot",
+      content: () => <ChatBot username={username} />,
+    });
+  };
+
+  window.addEventListener("openChatbot", handleOpenChatbot);
+  return () => window.removeEventListener("openChatbot", handleOpenChatbot);
+}, [openWindow]);
+
 
   // clock
   useEffect(() => {
@@ -259,6 +280,12 @@ export default function Win7Desktop() {
         }
         if (name === "ChatBot") {
           return <ChatBot username={currentUser?.username} />;
+        }
+        if (name === "Profile") {
+          return <ProfileApp user={currentUser} />;
+        }
+        if (name === "GenerateNotes") {
+          return <GenerateNotes username={currentUser?.username} />;
         }
         return <AppComponent openWindow={wmOpenWindow} {...extraProps} />;
       },
