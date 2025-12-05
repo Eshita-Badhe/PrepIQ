@@ -12,62 +12,6 @@ export default function GenerateNotes({ username}) {
   const [statusType, setStatusType] = useState(""); // "ok" | "err"
   const [loading, setLoading] = useState(false);
 
-  const getUploadKey = (topicName) => `uploaded_${username}_${topicName}`;
-
-  // ---------- helper: upload immediately after generation ----------
-  const uploadNotesIfNeeded = async (generatedNotes) => {
-    const uploadKey = getUploadKey(topic);
-    const alreadyUploaded = localStorage.getItem(uploadKey) === "true";
-
-    if (!generatedNotes.trim()) return;
-    if (alreadyUploaded) {
-      // no UI spam; notes might be regenerated with same topic
-      console.log("Notes already uploaded for", uploadKey);
-      return;
-    }
-
-    try {
-      setStatusType("");
-      setStatus("Uploading notes to Supabase...");
-
-      const fileContent = `Topic: ${topic}\nFormat: ${noteFormat}\n\n${generatedNotes}`;
-      const blob = new Blob([fileContent], { type: "text/plain" });
-      const file = new File(
-        [blob],
-        `${topic.replace(/\s+/g, "_")}_notes.txt`,
-        { type: "text/plain" }
-      );
-
-      const title = `${topic}_${noteFormat}_notes`;
-      const formData = new FormData();
-      formData.append("username", username);
-      formData.append("title", title);
-      formData.append("files", file);
-
-      const res = await fetch(`${API_BASE}/api/upload-docs`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        throw new Error(`Upload failed: ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.msg || "Upload failed");
-      }
-
-      localStorage.setItem(uploadKey, "true");
-      setStatusType("ok");
-      setStatus("Notes generated and uploaded successfully.");
-    } catch (err) {
-      console.error("Upload error:", err);
-      setStatusType("err");
-      setStatus(`Notes generated, but upload failed: ${err.message}`);
-    }
-  };
-
   const handleGenerate = async (e) => {
   e.preventDefault();
   if (!topic.trim()) {
@@ -109,9 +53,6 @@ export default function GenerateNotes({ username}) {
     console.log(`✅ Generated ${generatedNotes.length} characters`);
     
     setNotes(generatedNotes);
-
-    // 🔁 Auto-upload after generation
-    await uploadNotesIfNeeded(generatedNotes);
 
     if (!statusType || statusType === "ok") {
       setStatusType("ok");
@@ -213,11 +154,19 @@ export default function GenerateNotes({ username}) {
                 onChange={(e) => setNoteFormat(e.target.value)}
                 style={styles.input}
               >
-                <option value="standard">Standard (full notes)</option>
-                <option value="summary">Summary (key points)</option>
-                <option value="outline">Outline (headings)</option>
-                <option value="cornell">Cornell notes</option>
+                <option value="detailed">Detailed Point Wise Notes</option>
+                <option value="summarization">Summarization</option>
+                <option value="cheatsheet">Cheat Sheet</option>
+                <option value="mindmap">Mind Maps</option>
+                <option value="checklist">Important Topics Checklist</option>
+                <option value="qa">Question Answer Format</option>
+                <option value="differentiation">Differentiation</option>
+                <option value="keywords">Keyword Definition</option>
+                <option value="diagrams">Diagrams booklet</option>
+                <option value="pyqs">Solved PYQs Booklet</option>
+                <option value="practice_papers">Practice Question Papers</option>
               </select>
+
             </div>
 
             <div style={styles.field}>

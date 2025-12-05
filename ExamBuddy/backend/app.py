@@ -25,6 +25,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import HexColor, grey, black
 
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from werkzeug.datastructures import FileStorage
+from tempfile import NamedTemporaryFile
+from markupsafe import escape
 
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -565,6 +571,7 @@ def chat():
     user_message = data.get("message", "").strip()
     print("User message:", user_message)
     username = data.get("username")
+    username = normalize_username(username)
     print("Chat request from user:", username)
     history_payload = data.get("history", [])  # [{role, content}]
     thread_id = data.get("thread_id")  # optional, if you start sending it later
@@ -778,72 +785,218 @@ def save_thread():
 
 # ---------- NOTES --------------
 @app.route("/api/generate-notes", methods=["POST"])
-def generate_notes_endpoint():
-    """
-    Dedicated endpoint for COMPLETE note generation.
-    Returns full, untruncated notes.
-    """
+def api_generate_notes():
     data = request.get_json() or {}
-    topic = data.get("topic", "").strip()
-    note_format = data.get("note_format", "standard")
-    custom_prompt = data.get("custom_prompt", "").strip()
-    username = data.get("username", "User")
+    topic = (data.get("topic") or "").strip()
+    note_format = (data.get("note_format") or "detailed").strip()
+    custom_prompt = data.get("custom_prompt") or ""
+    username = normalize_username(data.get("username") or "")
 
-    if not topic:
-        return jsonify({"error": "Topic is required"}), 400
+    if not topic or not username:
+        return jsonify(success=False, error="Missing topic or username"), 400
 
-    print(f"[GENERATE-NOTES] Topic: {topic}, Format: {note_format}")
+    # ---------- 1) Build LLM prompt ----------
+    base_instruction = build_format_instruction(note_format)
+    user_prompt = (
+        f"You are generating high-quality study material strictly from the "
+        f"user's uploaded notes. Topic: '{topic}'.\n\n"
+        f"Output format: {base_instruction}.\n\n"
+        f"Additional instructions from user (if any): {custom_prompt}\n\n"
+        f"Use clear headings, bullet points, and well-structured sections. "
+        f"Do not hallucinate content that is not present or implied in the uploaded notes."
+    )
+
+    # ---------- 2) RAG retrieval ----------
+    try:
+        q_emb = embed_local([user_prompt])[0]
+        results = search_faiss(username, None, q_emb, top_k=8)
+    except Exception as e:
+        print("RAG error:", e)
+        results = []
+
+    context_blocks = []
+    for r in results or []:
+        context_blocks.append(
+            f"[{r['folder_title']} / {r['section_title']}] {r['content']}"
+        )
+    context = "\n\n".join(context_blocks)
+
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT),
+        SystemMessage(content=f"Context (user uploaded notes only):\n{context}"),
+        HumanMessage(content=user_prompt),
+    ]
+
+    # ---------- 3) Call LLM ----------
+    try:
+        resp = llm.invoke(messages)
+        raw_notes = resp.content.strip()
+    except Exception as e:
+        print("LLM error:", e)
+        return jsonify(success=False, error="LLM failed"), 500
+
+    if not raw_notes:
+        return jsonify(success=False, error="Empty notes"), 500
+
+    # ---------- 4) Convert TEXT -> PDF bytes via ReportLab ----------
+    pdf_bytes = notes_to_pdf_bytes(topic, note_format, raw_notes)
+
+    # ---------- 5) Upload PDF using existing upload flow ----------
+    tmp = NamedTemporaryFile(delete=False, suffix=".pdf")
+    tmp.write(pdf_bytes)
+    tmp.flush()
+
+    pdf_file = FileStorage(
+        stream=open(tmp.name, "rb"),
+        filename=f"{topic.replace(' ', '_')}_{note_format}.pdf",
+        content_type="application/pdf",
+    )
 
     try:
-        # Build a COMPLETE, DETAILED prompt for full notes
-        system_msg = (
-            "You are an expert exam preparation tutor. "
-            "Generate COMPREHENSIVE, DETAILED, and COMPLETE study notes. "
-            "Do NOT cut short. Include everything relevant."
+        paths = upload_generated_file_to_supabase(
+            root_type="generated_notes",
+            username=username,  # already normalized earlier
+            title=f"{topic}_{note_format}_notes",
+            file_obj=pdf_file,
         )
-
-        base_prompt = f"""Generate detailed, exam-focused {note_format} study notes on: {topic}
-
-REQUIREMENTS:
-- Be COMPREHENSIVE and thorough
-- Include definitions, concepts, examples, formulas, and key points
-- Use clear headings and bullet points
-- Go into depth on each topic
-- Do NOT abbreviate or cut short
-- For {note_format} format: Use structured layout"""
-
-        if custom_prompt:
-            base_prompt += f"Additional instructions: {custom_prompt}"
-            base_prompt += "Generate the COMPLETE notes now (do not abbreviate):"
-
-        # Call LLM with HIGH token limit
-        resp = llm.invoke(
-            [
-                SystemMessage(content=system_msg),
-                HumanMessage(content=base_prompt),
-            ]
-        )
-
-        notes_text = resp.content.strip()
-
-        if not notes_text or len(notes_text) < 100:
-            print(f"[WARNING] Notes seem incomplete: {len(notes_text)} chars")
-
-        print(f"[GENERATE-NOTES] Generated {len(notes_text)} characters")
-
-        return jsonify({
-            "success": True,
-            "notes": notes_text,
-            "length": len(notes_text),
-            "topic": topic,
-            "format": note_format,
-        }), 200
-
     except Exception as e:
-        print(f"[GENERATE-NOTES ERROR] {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        print("[GENERATE-NOTES] upload to supabase failed:", e)
+        import traceback; traceback.print_exc()
+        return jsonify(success=False, error="Upload failed", details=str(e)), 500
+
+
+    return jsonify(
+    success=True,
+    notes=raw_notes,
+    pdf_paths=paths,
+    )
+
+
+def build_format_instruction(fmt: str) -> str:
+    mapping = {
+        "detailed": "Detailed, hierarchical point-wise notes with headings, subheadings, and bullet points.",
+        "summarization": "Concise summary capturing key ideas, arguments, formulas, and results.",
+        "cheatsheet": "Highly compressed cheat sheet with formulas, definitions, and must-remember facts.",
+        "mindmap": "Mind map style: central topic, main branches as headings, sub-branches as nested bullet points.",
+        "checklist": "Checklist of most important topics and subtopics with checkboxes syntax.",
+        "qa": "Question-and-answer pairs that cover the topic comprehensively.",
+        "differentiation": "Side-by-side style explanations of differences between related concepts.",
+        "keywords": "List of important keywords with 1–2 line definitions each.",
+        "diagrams": "Textual descriptions of diagrams, labeled parts, and how to draw them step by step.",
+        "pyqs": "Solved previous year questions with step-by-step solutions.",
+        "practice_papers": "Practice question paper: sections, marks, and a variety of question types.",
+    }
+    return mapping.get(fmt, mapping["detailed"])
+
+def render_notes_html(topic, fmt, body_text):
+    # body_text is Markdown-like or plain text; you can keep it simple
+    safe_topic = escape(topic)
+    safe_body = body_text.replace("\n", "<br/>")  # quick version; can be improved
+    return f"""
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>{safe_topic} - {fmt}</title>
+        <style>
+          body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+                 font-size: 12pt; line-height: 1.5; padding: 24px; }}
+          h1, h2, h3 {{ color: #333; }}
+          ul {{ margin-left: 18px; }}
+          .meta {{ font-size: 10pt; color: #666; margin-bottom: 12px; }}
+        </style>
+      </head>
+      <body>
+        <h1>{safe_topic} ({fmt})</h1>
+        <div class="meta">Generated from your uploaded notes in ExamBuddy.</div>
+        <div>{safe_body}</div>
+      </body>
+    </html>
+    """
+
+def notes_to_pdf_bytes(topic: str, note_format: str, notes: str) -> bytes:
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    # margins
+    left = 50
+    top = height - 50
+    line_height = 14
+
+    # title
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(left, top, f"{topic} ({note_format})")
+    y = top - 2 * line_height
+
+    # body
+    c.setFont("Helvetica", 11)
+    for raw_line in notes.splitlines():
+        line = raw_line.rstrip()
+
+        if not line:
+            y -= line_height
+        else:
+            if y < 60:
+                c.showPage()
+                c.setFont("Helvetica", 11)
+                y = height - 50
+            c.drawString(left, y, line)
+            y -= line_height
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+def upload_generated_file_to_supabase(root_type: str, username: str, title: str, file_obj):
+    if not supabase_available():
+        raise RuntimeError("Supabase not configured")
+    
+    root_type="generated_notes"
+
+    username_norm = normalize_username(username)
+    title_norm = normalize_title(title)
+    base_prefix = f"{root_type}/{username_norm}/{title_norm}/"
+
+    storage = supabase.storage.from_(STORAGE_BUCKET)
+    saved_paths = []
+
+    # file_obj is a single FileStorage here
+    if not file_obj or not file_obj.filename:
+        raise RuntimeError("No valid file provided")
+
+    filename = os.path.basename(file_obj.filename)
+    key = base_prefix + filename
+
+    try:
+        storage.remove(key)
+    except Exception as e:
+        print("DELETE BEFORE REPLACE ERROR for", key, ":", e)
+
+    file_bytes = file_obj.read()
+    print("UPLOADING", key, "size:", len(file_bytes))
+
+    resp = storage.upload(
+        key,
+        file_bytes,
+        {"content-type": file_obj.mimetype or "application/octet-stream"},
+    )
+    print("UPLOAD RESP for", key, "=>", resp)
+
+    if isinstance(resp, dict) and resp.get("error"):
+        raise RuntimeError(str(resp["error"]))
+
+    saved_paths.append(key)
+
+    try:
+        ingest_single_file(
+            username=username_norm,
+            title=title_norm,
+            path_in_bucket=key,
+        )
+    except Exception as e:
+        print("INGEST ERROR for", key, ":", e)
+
+    return saved_paths
 
 # ---------- Mind Map ----------
 def extract_json_from_response(text: str) -> dict:
