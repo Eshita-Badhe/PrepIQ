@@ -871,7 +871,6 @@ def api_generate_notes():
     pdf_paths=paths,
     )
 
-
 def build_format_instruction(fmt: str) -> str:
     mapping = {
         "detailed": "Detailed, hierarchical point-wise notes with headings, subheadings, and bullet points.",
