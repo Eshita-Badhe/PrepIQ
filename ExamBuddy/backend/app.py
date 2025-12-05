@@ -538,6 +538,9 @@ def api_file_url():
 
     return jsonify(success=True, url=public_url)
 
+    stored_hash = user_data["password_hash"]
+    if not check_password_hash(stored_hash, password):
+        return jsonify(success=False, hint='your pass')
 
 # ---------- Chat Bot ----------
 llm = ChatGroq(

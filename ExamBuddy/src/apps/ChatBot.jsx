@@ -282,7 +282,7 @@ async function handleSend(e) {
             flex: 1,
             padding: "10px",
             overflowY: "auto",
-            fontSize: "1rem",
+            fontSize: "1.2rem"
           }}
         >
           {messages.map((m, i) => (
@@ -338,7 +338,7 @@ async function handleSend(e) {
               background: "rgba(5,10,25,0.9)",
               color: "#f5f5f5",
               outline: "none",
-              fontSize: "1rem",
+            fontSize: "1.2rem"
             }}
           />
           <button
@@ -353,7 +353,7 @@ async function handleSend(e) {
               color: "#fff",
               cursor: loading ? "default" : "pointer",
               fontWeight: 600,
-              fontSize: "1rem",
+              fontSize: "1.2rem"
             }}
           >
             Send

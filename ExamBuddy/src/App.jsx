@@ -582,5 +582,5 @@ export default function Win7Desktop() {
         </div>
       )}
     </div>
-  );
+);
 }
