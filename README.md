@@ -161,8 +161,8 @@
 
 <h2>👥 Contributors / Team</h2>
 <ul>
-  <li><strong>Eshita Badhe</strong> – Full-stack development, architecture, AI integration (RAG, embeddings, LLM).  </li>
-  <li><strong>Aarya Chaudhari</strong> – UI/UX, feature design, research, and front-end experience flows.  </li>
+  <li><strong><a href="https://github.com/Eshita-Badhe">Eshita Badhe</a></strong> – Full-stack development, architecture, AI integration (RAG, embeddings, LLM).  </li>
+  <li><a href="https://github.com/Aarya-Chaudhari">Aarya Chaudhari</a></strong> – UI/UX, feature design, research, and front-end experience flows.  </li>
 </ul>
 
 
