@@ -1,6 +1,5 @@
 // src/apps/FileViewerApp.jsx
 import React, { useEffect, useState } from "react";
-import "../styles/app.css";
 
 export default function FileViewerApp({ fullPath, fileName }) {
   const [url, setUrl] = useState("");
