@@ -32,6 +32,8 @@ from werkzeug.datastructures import FileStorage
 from tempfile import NamedTemporaryFile
 from markupsafe import escape
 
+from datetime import datetime, date, timedelta
+
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -273,7 +275,6 @@ def api_me():
         "direct_login": getattr(current_user, "direct_login", False)
     }), 200
 
-
 @app.route('/api/direct-login-status')
 def direct_login_status():
     if current_user.is_authenticated:
@@ -284,58 +285,6 @@ def direct_login_status():
             return jsonify({"status": "direct"})
         return jsonify({"status": "normal"})
     return jsonify({"status": "login"})
-
-@app.route("/api/profile", methods=["GET"])
-def api_profile():
-    if not current_user.is_authenticated:
-        return jsonify(success=False, msg="Not authenticated"), 401
-
-    try:
-        # 1) Fetch user from public.users to get username/email
-        user_resp = supabase.table("users").select("id, username, email").eq(
-            "id", str(current_user.id)
-        ).limit(1).execute()
-
-
-        users_rows = getattr(user_resp, "data", None) or []
-        if not users_rows:
-            return jsonify(success=False, msg="User not found in users table"), 404
-
-        user_row = users_rows[0]
-        user_id = user_row["id"]
-        username = user_row.get("username")
-        
-
-        # 2) Fetch profile using user_id (preferred)
-        prof_resp = (
-            supabase.table("profiles")
-            .select("full_name, role, streak, last_seen, details")
-            .eq("id", str(user_id))
-            .limit(1)
-            .execute()
-        )
-
-        
-        prof_rows = getattr(prof_resp, "data", None) or []
-
-
-        if not prof_rows:
-            return jsonify(success=False, msg="Profile not found"), 404
-
-        row = prof_rows[0]
-        profile = {
-            "name": row.get("full_name") or username or "USER",
-            "role": row.get("role") or "Student",
-            "streak": row.get("streak") or 0,
-            "lastSeen": row.get("last_seen") or "Today",
-            "details": row.get("details") or "",
-        }
-
-        return jsonify(success=True, profile=profile)
-
-    except Exception as e:
-        print("PROFILE ERROR:", e)
-        return jsonify(success=False, msg=str(e)), 500
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
@@ -357,9 +306,291 @@ def api_logout():
         print("LOGOUT ERROR:", e)
         return jsonify({"success": False, "msg": "Internal logout error"}), 500
 
+# ---------- Profile APP -------------
+@app.route("/api/profile", methods=["GET"])
+def api_profile():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    try:
+        # users table: get base info
+        user_resp = (
+            supabase.table("users")
+            .select("id, username, email")
+            .eq("id", str(current_user.id))
+            .limit(1)
+            .execute()
+        )
+        users_rows = getattr(user_resp, "data", None) or []
+        if not users_rows:
+            return jsonify(success=False, msg="User not found in users table"), 404
+
+        user_row = users_rows[0]
+        user_id = user_row["id"]
+        username = user_row.get("username")
+        email = user_row.get("email")
+
+        # profiles table: matches screenshot columns
+        prof_resp = (
+            supabase.table("profiles")
+            .select("full_name, role, streak, last_seen, details")
+            .eq("id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        prof_rows = getattr(prof_resp, "data", None) or []
+        if not prof_rows:
+            return jsonify(success=False, msg="Profile not found"), 404
+
+        row = prof_rows[0]
+
+        name = row.get("full_name") or username or "USER"
+        role = row.get("role") or "Student"
+        streak = row.get("streak") or 0
+        last_seen = row.get("last_seen") or "Today"
+        details = row.get("details") or ""
+
+        # simple completeness: require name and role and details
+        is_complete = bool(name.strip()) and bool(role.strip()) and bool(details.strip())
+
+        profile = {
+            "id": user_id,
+            "name": name,
+            "role": role,
+            "streak": streak,
+            "lastSeen": last_seen,
+            "details": details,
+            "email": email,
+            "isComplete": is_complete,
+        }
+
+        return jsonify(success=True, profile=profile)
+
+    except Exception as e:
+        print("PROFILE ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+    
+@app.route("/api/profile", methods=["POST"])
+def api_profile_update():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    data = request.json or {}
+    try:
+        user_id = str(current_user.id)
+
+        # update profiles table based on form
+        update_fields = {
+            "full_name": data.get("name"),
+            "role": data.get("role"),
+            "details": data.get("details"),
+        }
+        update_fields = {k: v for k, v in update_fields.items() if v is not None}
+
+        if update_fields:
+            supabase.table("profiles").update(update_fields).eq("id", user_id).execute()
+
+        # optional: sync username in users table from name
+        if data.get("name"):
+            supabase.table("users").update(
+                {"username": data["name"]}
+            ).eq("id", user_id).execute()
+
+        return jsonify(success=True)
+
+    except Exception as e:
+        print("PROFILE UPDATE ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+@app.route("/api/delete-account", methods=["POST"])
+def api_delete_account():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    user_id = str(current_user.id)
+
+    try:
+        # delete chat messages if not ON DELETE CASCADE from chat_threads
+        try:
+            supabase.table("chat_messages").delete().eq("user_id", user_id).execute()
+        except Exception as e:
+            print("DELETE chat_messages ERROR (maybe no user_id col):", e)
+
+        # delete chat threads
+        try:
+            supabase.table("chat_threads").delete().eq("user_id", user_id).execute()
+        except Exception as e:
+            print("DELETE chat_threads ERROR:", e)
+
+        # delete memories
+        try:
+            supabase.table("memories").delete().eq("user_id", user_id).execute()
+        except Exception as e:
+            print("DELETE memories ERROR:", e)
+
+        # delete profile + user row
+        supabase.table("profiles").delete().eq("id", user_id).execute()
+        supabase.table("users").delete().eq("id", user_id).execute()
+
+        # delete storage folders for this username
+        if supabase_available():
+            storage = supabase.storage.from_(STORAGE_BUCKET)
+            username_norm = normalize_username(current_user.username)
+
+            def delete_prefix(root_type: str):
+                prefix = f"{root_type}/{username_norm}/"
+                try:
+                    resp = storage.list(prefix)
+                    if isinstance(resp, list):
+                        objects = resp
+                    elif isinstance(resp, dict):
+                        objects = resp.get("data", []) or []
+                    else:
+                        objects = []
+
+                    keys = []
+                    for obj in objects:
+                        name = obj.get("name", "") or ""
+                        if not name:
+                            continue
+                        # name is relative to prefix, so full key:
+                        full_key = prefix + name
+                        keys.append(full_key)
+
+                    # delete in batches (Supabase storage.remove accepts list)
+                    if keys:
+                        print("REMOVING KEYS under", prefix, "=>", keys)
+                        storage.remove(keys)
+                except Exception as e:
+                    print(f"DELETE STORAGE under {prefix} ERROR:", e)
+
+            for root in [
+                "uploaded",
+                "generated_notes",
+                "generated_sample_papers",
+            ]:
+                delete_prefix(root)
+
+        # flask logout
+        logout_user()
+        return jsonify(success=True)
+
+    except Exception as e:
+        print("DELETE ACCOUNT ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+@app.route("/api/activity/ping", methods=["POST"])
+def api_activity_ping():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    user_id = str(current_user.id)
+
+    try:
+        prof_resp = (
+            supabase.table("profiles")
+            .select("streak, last_seen")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(prof_resp, "data", None) or []
+        if not rows:
+            return jsonify(success=False, msg="Profile not found"), 404
+
+        row = rows[0]
+        streak = row.get("streak") or 0
+        last_seen = row.get("last_seen")
+
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+
+        if last_seen:
+            # if last_seen is date or iso string, normalise:
+            last_date = (
+                last_seen if isinstance(last_seen, date) else date.fromisoformat(last_seen)
+            )
+            if last_date == today:
+                pass
+            elif last_date == yesterday:
+                streak += 1
+            else:
+                streak = 1
+        else:
+            streak = 1
+
+        supabase.table("profiles").update(
+            {"streak": streak, "last_seen": today.isoformat()}
+        ).eq("id", user_id).execute()
+
+        return jsonify(success=True, streak=streak)
+
+    except Exception as e:
+        print("ACTIVITY ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+@app.route("/api/memories", methods=["GET"])
+def api_memories():
+    if not current_user.is_authenticated:
+        return jsonify(success=False, msg="Not authenticated"), 401
+
+    user_id = str(current_user.id)
+
+    try:
+        resp = (
+            supabase.table("memories")
+            .select("summary, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        rows = getattr(resp, "data", None) or []
+        # Just return summaries as a list of strings for now
+        memories = [r.get("summary", "") for r in rows if r.get("summary")]
+        return jsonify(success=True, memories=memories)
+    except Exception as e:
+        print("MEMORIES FETCH ERROR:", e)
+        return jsonify(success=False, msg=str(e)), 500
+
+def summarize_thread_for_memory(messages, username: str) -> str:
+    """
+    messages: list of {role: 'user'|'assistant', content: str}
+    Returns a short memory summary about the user and this thread.
+    """
+    try:
+        convo_text = ""
+        for m in messages[-40:]:  # last N messages only
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            convo_text += f"{role.upper()}: {content}\n"
+
+        prompt = (
+            "You are building long-term memory for an exam-prep assistant.\n"
+            "From the following conversation, extract concise facts about the student's goals, "
+            "subjects, difficulties, preferences, and any commitments.\n"
+            "Write 3-10 bullet-point style sentences. Avoid greetings or chit-chat.\n\n"
+            f"Username: {username}\n\n"
+            f"Conversation:\n{convo_text}\n"
+        )
+
+        msgs = [
+            SystemMessage(
+                content="You summarize chats into stable user memories for ExamBuddy."
+            ),
+            HumanMessage(content=prompt),
+        ]
+        resp = llm.invoke(msgs)
+        text = resp.content if hasattr(resp, "content") else str(resp)
+        return text.strip()
+    except Exception as e:
+        print("MEMORY SUMMARY ERROR:", e)
+        return ""
+
+# ---------- Upload Docs to Supabase Storage ----------
 def normalize_title(t: str) -> str:
     return t.strip().replace(" ", "_")
-# ---------- Upload Docs to Supabase Storage ----------
+
 @app.route("/api/upload-docs", methods=["POST"])
 def api_upload_docs():
     if not current_user.is_authenticated:
@@ -619,6 +850,37 @@ def chat():
     if not username:
         return jsonify({"reply": "Username is missing."}), 400
 
+    memory_summaries = []
+    try:
+        if current_user.is_authenticated:
+            mem_resp = (
+                supabase.table("memories")
+                .select("summary, created_at")
+                .eq("user_id", str(current_user.id))
+                .order("created_at", desc=True)
+                .limit(5)
+                .execute()
+            )
+            mem_rows = getattr(mem_resp, "data", None) or []
+            memory_summaries = [m["summary"] for m in mem_rows if m.get("summary")]
+    except Exception as e:
+        print("MEMORY READ FOR CHAT ERROR:", e)
+
+    memory_block = "\n\n".join(memory_summaries)
+
+    system_text = SYSTEM_PROMPT
+    if memory_block:
+        system_text += (
+            "\n\nHere are some long-term memories about this student. "
+            "Use them to personalize answers when relevant:\n"
+            f"{memory_block}\n"
+        )
+
+    messages = [
+        SystemMessage(content=system_text),
+        # plus your previous context + user message
+    ]
+
     # Build history for LLM from history_payload
     history_msgs = []
     for h in history_payload:
@@ -656,6 +918,39 @@ def chat():
         messages.append(SystemMessage(content=f"Context:\n{context}"))
     messages.extend(history_msgs)
     messages.append(HumanMessage(content=user_message))
+
+        # After saving current message and AI response to chat_messages
+
+    try:
+        if current_user.is_authenticated and thread_id:
+            # Fetch recent messages for this thread for summarization
+            msg_resp = (
+                supabase.table("chat_messages")
+                .select("role, content, created_at")
+                .eq("thread_id", thread_id)
+                .order("created_at", asc=True)
+                .limit(80)
+                .execute()
+            )
+            msg_rows = getattr(msg_resp, "data", None) or []
+
+            messages_for_summary = [
+                {"role": r.get("role", "user"), "content": r.get("content", "")}
+                for r in msg_rows
+            ]
+
+            if messages_for_summary:
+                summary = summarize_thread_for_memory(messages_for_summary, username)
+                if summary:
+                    supabase.table("memories").insert(
+                        {
+                            "user_id": str(current_user.id),
+                            "thread_id": thread_id,
+                            "summary": summary,
+                        }
+                    ).execute()
+    except Exception as e:
+        print("MEMORY INSERT ERROR:", e)
 
     # Call Groq LLM
     try:
@@ -1195,6 +1490,297 @@ def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> s
     except Exception as e:
         print(f"[MINDMAP UPLOAD ERROR] {e}")
         raise
+
+# ---------- Settings App------------------
+# settings_routes.py
+from flask import Blueprint
+from flask_login import login_required
+from werkzeug.utils import secure_filename
+
+settings_bp = Blueprint("settings", __name__, url_prefix="/api/settings")
+
+UPLOAD_DIR = "static/backgrounds"
+
+@settings_bp.route("", methods=["GET"])
+@login_required
+def get_settings():
+    # Example: settings stored on user model
+    return jsonify({
+        "theme": current_user.theme or "light",
+        "background_url": current_user.background_url or ""
+    })
+
+@settings_bp.route("/theme", methods=["POST"])
+@login_required
+def update_theme():
+    data = request.get_json() or {}
+    theme = data.get("theme", "light")
+    if theme not in ["light", "dark"]:
+        return jsonify({"error": "invalid theme"}), 400
+    current_user.theme = theme
+    # db.session.commit()
+    return jsonify({"theme": theme})
+
+@settings_bp.route("/background", methods=["POST"])
+@login_required
+def update_background():
+    if "background" not in request.files:
+        return jsonify({"error": "no file"}), 400
+    f = request.files["background"]
+    filename = secure_filename(f.filename)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    path = os.path.join(UPLOAD_DIR, filename)
+    f.save(path)
+    url = f"/{path}"
+    current_user.background_url = url
+    # db.session.commit()
+    return jsonify({"background_url": url})
+
+auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+@auth_bp.route("/signout", methods=["POST"])
+@login_required
+def signout():
+    logout_user()
+    return jsonify({"success": True})
+
+#--------- FeedBack App -----------
+# feedback_routes.py
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+from datetime import datetime
+
+feedback_bp = Blueprint("feedback", __name__, url_prefix="/api/feedback")
+
+@feedback_bp.route("", methods=["POST"])
+@login_required
+def create_feedback():
+    data = request.get_json() or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "empty"}), 400
+
+    # Example: persist feedback
+    # fb = Feedback(user_id=current_user.id, text=text, created_at=datetime.utcnow())
+    # db.session.add(fb); db.session.commit()
+
+    return jsonify({"success": True, "timestamp": datetime.utcnow().isoformat()})
+
+#---------Games App-----------
+# games_routes.py
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+import random
+
+games_bp = Blueprint("games", __name__, url_prefix="/api/games")
+
+@games_bp.route("/profile", methods=["GET"])
+@login_required
+def games_profile():
+    # Example: compute from DB and feedback
+    return jsonify({
+        "user_id": current_user.id,
+        "level": 3,
+        "xp": 1200,
+        "preferred_methods": ["quiz", "flashcards", "active_recall"],
+        "progress": {"completed_challenges": 42}
+    })
+
+@games_bp.route("/leaderboard", methods=["GET"])
+@login_required
+def leaderboard():
+    # Example static data; in real app query aggregated stats
+    entries = [
+        {"user_id": 1, "username": "Alice", "points": 2500},
+        {"user_id": 2, "username": "Bob", "points": 2200},
+    ]
+    return jsonify({"entries": entries})
+
+@games_bp.route("/challenge", methods=["POST"])
+@login_required
+def challenge():
+    data = request.get_json() or {}
+    mode = data.get("mode", "quiz")
+    # Use user prefs + feedback-driven rules to generate challenge
+    base_prompt = {
+        "quiz": "Answer this MCQ about today's topic.",
+        "flashcards": "Recall the definition of spaced repetition.",
+        "riddles": "Solve this logic riddle related to algorithms.",
+        "talks": "Explain this concept in your own words.",
+        "active_recall": "Write everything you remember about linked lists.",
+    }.get(mode, "Practice a concept in your own words.")
+    return jsonify({
+        "mode": mode,
+        "prompt": base_prompt,
+        "difficulty": random.choice(["easy", "medium", "hard"])
+    })
+
+#------------Voice Bot--------------
+# voicebot_routes.py
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+from datetime import datetime
+
+voicebot_bp = Blueprint("voicebot", __name__, url_prefix="/api/voicebot")
+
+@voicebot_bp.route("/message", methods=["POST"])
+@login_required
+def voicebot_message():
+    data = request.get_json() or {}
+    content = data.get("content", "")
+    history = data.get("history", [])
+
+    # Here you would call your LLM / RAG pipeline
+    reply = f"I heard: {content}. Let's keep going with your study plan."
+
+    # Persist context
+    # conv = Conversation(user_id=current_user.id, messages=history + [{"role": "assistant", "content": reply}])
+    # db.session.add(conv); db.session.commit()
+
+    return jsonify({
+        "reply": reply,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+#-------------Planner App------------------
+# planner_routes.py
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+from datetime import date, timedelta
+
+planner_bp = Blueprint("planner", __name__, url_prefix="/api/planner")
+
+@planner_bp.route("/preferences", methods=["GET"])
+@login_required
+def get_preferences():
+    # Example placeholders
+    preferences = {
+        "hoursPerDay": 2,
+        "focusAreas": ["DSA", "OS"]
+    }
+    plan = _generate_dummy_plan(preferences)
+    return jsonify({"preferences": preferences, "plan": plan})
+
+@planner_bp.route("/generate", methods=["POST"])
+@login_required
+def generate_plan():
+    data = request.get_json() or {}
+    preferences = data.get("preferences", {})
+    plan = _generate_dummy_plan(preferences)
+    return jsonify({"plan": plan})
+
+@planner_bp.route("/save", methods=["POST"])
+@login_required
+def save_plan():
+    data = request.get_json() or {}
+    plan = data.get("plan")
+    # Persist plan and sync with calendar
+    # db.session.add(...); db.session.commit()
+    return jsonify({"success": True})
+
+def _generate_dummy_plan(preferences):
+    start = date.today()
+    focus = preferences.get("focusAreas", ["General"])
+    hours = preferences.get("hoursPerDay", 2)
+    days = []
+    for i in range(7):
+        d = start + timedelta(days=i)
+        topic = focus[i % len(focus)]
+        days.append({
+            "date": d.isoformat(),
+            "tasks": [f"Study {topic} for {hours} hours"]
+        })
+    return {"days": days}
+
+#----------------News App -----------------
+# news_routes.py
+from flask import Blueprint, request, jsonify
+
+news_bp = Blueprint("news", __name__, url_prefix="/api/news")
+
+@news_bp.route("", methods=["GET"])
+def get_news():
+    domain = request.args.get("domain", "ai")
+    # Call external news API / your scraper here
+    # For now, dummy articles:
+    articles = [
+        {"id": 1, "title": f"Latest {domain} update 1", "url": "https://example.com/1"},
+        {"id": 2, "title": f"Latest {domain} update 2", "url": "https://example.com/2"},
+    ]
+    return jsonify({"articles": articles})
+
+#-------------- Browser App----------------
+# browser_routes.py
+from flask import Blueprint, request, jsonify
+import requests
+from bs4 import BeautifulSoup
+
+browser_bp = Blueprint("browser", __name__, url_prefix="/api/browser")
+
+@browser_bp.route("/search", methods=["GET"])
+def search():
+    q = request.args.get("q", "")
+    # Plug in real search API; dummy data here
+    results = [
+        {"title": f"Result for {q}", "url": "https://example.com"},
+    ]
+    return jsonify({"results": results})
+
+@browser_bp.route("/scrape", methods=["POST"])
+def scrape():
+    data = request.get_json() or {}
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    resp = requests.get(url, timeout=5)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    text = soup.get_text(separator="\n")[:4000]
+    return jsonify({"text": text})
+
+#--------------------Note Pad -----------------
+# notepad_routes.py
+from flask import Blueprint, request, jsonify, send_file
+from flask_login import login_required, current_user
+from io import BytesIO
+import json
+
+notepad_bp = Blueprint("notepad", __name__, url_prefix="/api/notepad")
+
+@notepad_bp.route("", methods=["GET"])
+@login_required
+def get_note():
+    # Example: load from user profile / notes table
+    note = {
+        "content": "",
+        "style": {"color": "#000000", "fontFamily": "Arial", "fontSize": 16},
+    }
+    return jsonify(note)
+
+@notepad_bp.route("", methods=["POST"])
+@login_required
+def save_note():
+    data = request.get_json() or {}
+    content = data.get("content", "")
+    style = data.get("style", {})
+    # Save to DB
+    # note = Note(user_id=current_user.id, content=content, style=json.dumps(style))
+    # db.session.add(note); db.session.commit()
+    return jsonify({"success": True})
+
+@notepad_bp.route("/download", methods=["GET"])
+@login_required
+def download_note():
+    # Load content from DB; placeholder:
+    content = "Your note content here"
+    buf = BytesIO()
+    buf.write(content.encode("utf-8"))
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="note.txt",
+        mimetype="text/plain"
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

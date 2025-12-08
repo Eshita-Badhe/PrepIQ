@@ -1,0 +1,218 @@
+/* File viewer specific */
+.file-viewer-app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-height: 20px;
+}
+
+.file-viewer-header h2 {
+  margin-bottom: 0.25rem;
+}
+
+.file-viewer-body {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 0.5px solid rgba(55, 65, 81, 0.9);
+  display: flex;
+}
+
+.file-viewer-frame {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  border: none;
+  background: #020617;
+}
+
+.file-viewer-fallback {
+  margin: auto;
+  max-width: 380px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+/* apps.css */
+
+/* Global app shell for each window */
+.app-shell {
+  padding: 0.5rem 1rem;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #e5e7eb;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Headings */
+.app-shell h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin: 5px;
+}
+
+.app-shell h3 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 0 0 0.4rem;
+  color: #9ca3af;
+}
+
+/* Sections */
+.app-section {
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(75, 85, 99, 0.7);
+}
+
+/* Inputs */
+.app-input,
+.app-textarea,
+.app-select {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background: rgba(15, 23, 42, 0.85);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+}
+
+.app-input:focus,
+.app-textarea:focus,
+.app-select:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5);
+}
+
+/* Buttons */
+.app-button {
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
+  margin-top: 10px;
+}
+
+.app-button.secondary {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.7);
+  color: #e5e7eb;
+}
+
+.app-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.app-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(56, 189, 248, 0.4);
+  filter: brightness(1.05);
+}
+
+/* Simple pill tabs for modes */
+.app-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.app-pill {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.9);
+  color: #d1d5db;
+}
+
+.app-pill.active {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  color: #bbf7d0;
+}
+
+/* List / leaderboard */
+.app-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.app-list li {
+  padding: 0.45rem 0.6rem;
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+/* Conversation bubbles */
+.msg.user,
+.msg.assistant {
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  margin-bottom: 0.4rem;
+  max-width: 90%;
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.6);
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+/* Scrollable areas */
+.app-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Small badges */
+.app-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #7dd3fc;
+  font-size: 0.7rem;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+}
