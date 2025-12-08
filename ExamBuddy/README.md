@@ -6,7 +6,7 @@
 Open your terminal (Command Prompt or PowerShell) and run:
 ```
 git clone https://github.com/Eshita-Badhe/PrepIQ
-cd  PrepIQ/PrepIQ
+cd  PrepIQ/ExanBuddy
 ```
 
 
@@ -22,6 +22,10 @@ Start the local server to see your app in the browser:
 npm run dev
 ```
 
+```
+cd backend
+python app.py
+```
 > Open the link shown in the terminal (usually `http://localhost:5173/`) to view your app.
 
 ---
