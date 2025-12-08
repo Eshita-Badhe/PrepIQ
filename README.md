@@ -44,16 +44,16 @@
   <em>Bootload screen – initializing the PrepIQ Windows 7–style environment.</em>
 </p>
 
+<p>
+  <img src="./assets/registration.png" alt="Registration screen" width="720" />
+  <br />
+  <em>Registration – onboarding new users into the PrepIQ ecosystem.</em>
+</p>
+
 <p >
   <img src="./assets/login.png" alt="PrepIQ login" width="720" />
   <br />
   <em>Login screen – secure sign-in for students.</em>
-</p>
-
-<p >
-  <img src="./assets/Menu.png" alt="PrepIQ main menu" width="720" />
-  <br />
-  <em>Main menu – quick access to notes, quizzes, planner, and more.</em>
 </p>
 
 <p >
@@ -63,22 +63,11 @@
 </p>
 
 <p >
-  <img src="./assets/generatednotes.png" alt="Generated notes view" width="720" />
+  <img src="./assets/Menu.png" alt="PrepIQ main menu" width="720" />
   <br />
-  <em>Generated notes – AI-created, syllabus-aligned study material.</em>
+  <em>Main menu – quick access to notes, quizzes, planner, and more.</em>
 </p>
 
-<p >
-  <img src="./assets/generatenotes.png" alt="Generate notes form" width="720" />
-  <br />
-  <em>Generate notes – choose topics and formats for custom notes.</em>
-</p>
-
-<p>
-  <img src="./assets/registration.png" alt="Registration screen" width="720" />
-  <br />
-  <em>Registration – onboarding new users into the PrepIQ ecosystem.</em>
-</p>
 
 <p>
   <img src="./assets/uploading.png" alt="Uploading documents" width="720" />
@@ -90,6 +79,18 @@
   <img src="./assets/viewfiles.png" alt="View uploaded files" width="720" />
   <br />
   <em>File viewer – manage and review uploaded study materials.</em>
+</p>
+
+<p >
+  <img src="./assets/generatenotes.png" alt="Generate notes form" width="720" />
+  <br />
+  <em>Generate notes – choose topics and formats for custom notes.</em>
+</p>
+
+<p >
+  <img src="./assets/generatednotes.png" alt="Generated notes view" width="720" />
+  <br />
+  <em>Generated notes – AI-created, syllabus-aligned study material.</em>
 </p>
 
 <h2>🧩 System Workflow</h2>
