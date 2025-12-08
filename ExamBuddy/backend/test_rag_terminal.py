@@ -18,7 +18,7 @@ if not GROQ_API_KEY:
 GROQ_MODEL_ID = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = (
-    "You are ExamBuddy, a helpful exam tutor.\n"
+    "You are  PrepIQ, a helpful exam tutor.\n"
     "You must answer using ONLY the provided context chunks from the student's own notes.\n"
     "If the answer is not clearly in the context, say you don't know and do not invent facts.\n"
     "Be concise and focus on the exam-relevant points."
@@ -54,7 +54,7 @@ def answer_with_rag_and_history(
     results = search_faiss(username, topic, q_emb, top_k=5)
 
     if not results:
-        # No context -> let LLM answer freely (still as ExamBuddy)
+        # No context -> let LLM answer freely (still as  PrepIQ)
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
         ]

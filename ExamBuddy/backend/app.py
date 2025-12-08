@@ -576,7 +576,7 @@ def summarize_thread_for_memory(messages, username: str) -> str:
 
         msgs = [
             SystemMessage(
-                content="You summarize chats into stable user memories for ExamBuddy."
+                content="You summarize chats into stable user memories for  PrepIQ."
             ),
             HumanMessage(content=prompt),
         ]
@@ -789,7 +789,7 @@ llm = ChatGroq(
 )
 
 SYSTEM_PROMPT = (
-    "You are ExamBuddy, a helpful exam tutor.\n"
+    "You are  PrepIQ, a helpful exam tutor.\n"
     "You can use the student's uploaded notes (Context) when available.\n"
     "If the answer is not clearly in the context, you may answer from your own knowledge, "
     "but prefer to ground answers in the context when possible."
@@ -1201,7 +1201,7 @@ def render_notes_html(topic, fmt, body_text):
       </head>
       <body>
         <h1>{safe_topic} ({fmt})</h1>
-        <div class="meta">Generated from your uploaded notes in ExamBuddy.</div>
+        <div class="meta">Generated from your uploaded notes in  PrepIQ.</div>
         <div>{safe_body}</div>
       </body>
     </html>
