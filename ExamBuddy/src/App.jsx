@@ -501,7 +501,7 @@ const allPrograms = [
                       color: "rgba(0, 0, 0, 1)",
                     }}
                   >
-                    ExamBuddy Win 7
+                     PrepIQ Win 7
                   </div>
                 </div>
               </div>

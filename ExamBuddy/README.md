@@ -1,14 +1,12 @@
-# ExamBuddy 
-
-
+#  PrepIQ 
 
 ## 🚀 Getting Started
 
 ### 1. Clone the Repository
 Open your terminal (Command Prompt or PowerShell) and run:
 ```
-git clone https://github.com/Eshita-Badhe/ExamBuddy
-cd ExamBuddy
+git clone https://github.com/Eshita-Badhe/PrepIQ
+cd  PrepIQ/PrepIQ
 ```
 
 
@@ -65,7 +63,7 @@ Since this is a React project, the backend usually lives in a separate folder to
 
 ### 1. Create Backend Folder
 Create a new folder named `backend` in your root directory (next to `src` and `public`).
-*   **Location:** `ExamBuddy/backend/`
+*   **Location:** ` PrepIQ/backend/`
 
 ### 2. Add Flask Files
 Inside the `backend` folder, create your Python files:
@@ -74,7 +72,7 @@ Inside the `backend` folder, create your Python files:
 
 ### 3. Example Structure
 ```
-ExamBuddy/
+ PrepIQ/
 ├── node_modules/
 ├── public/
 
