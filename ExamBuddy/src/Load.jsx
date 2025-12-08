@@ -59,8 +59,8 @@ function Windows7BootAnimation() {
         <div className="ball green"></div>
         <div className="ball yellow"></div>
       </div>
-      <h2>Starting ExamBuddy</h2>
-      <h4>&copy; 2025 ExamBuddy MS Windows 7</h4>
+      <h2>Starting PrepIQ</h2>
+      <h4>2025 - THE AI POWERED STUDYMATE</h4>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 // src/apps/FileViewerApp.jsx
 import React, { useEffect, useState } from "react";
+import "../styles/app.css";
 
 export default function FileViewerApp({ fullPath, fileName }) {
   const [url, setUrl] = useState("");
@@ -23,29 +24,65 @@ export default function FileViewerApp({ fullPath, fileName }) {
         setError("Network error: " + e.message);
       }
     }
-    loadUrl();
+    if (fullPath) loadUrl();
   }, [fullPath]);
 
-  if (error) return <div style={{ padding: 10, color: "red" }}>{error}</div>;
-  if (!url) return <div style={{ padding: 10 }}>Loading file...</div>;
+  if (error) {
+    return (
+      <div className="app-shell file-viewer-app">
+        <h2>File Viewer</h2>
+        <div className="app-section">
+          <p style={{ color: "#fecaca" }}>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!url) {
+    return (
+      <div className="app-shell file-viewer-app">
+        <h2>File Viewer</h2>
+        <div className="app-section">
+          <p>Loading file...</p>
+        </div>
+      </div>
+    );
+  }
 
   const isPdf = fileName.toLowerCase().endsWith(".pdf");
 
   return (
-    <div style={{ padding: 10, height: "100%", boxSizing: "border-box" }}>
-      <h4>{fileName}</h4>
-      <div style={{ marginBottom: 8 }}>
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          Open / Download in browser
+    <div className="app-shell file-viewer-app">
+      <div className="file-viewer-header">
+        <div>
+          <span className="app-badge">Preview</span>
+        </div>
+        <a
+          className="app-button secondary"
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          ⬇ Open / Download
         </a>
       </div>
-      {isPdf && (
-        <iframe
-          src={url}
-          title={fileName}
-          style={{ width: "100%", height: "80%", border: "1px solid #ccc" }}
-        />
-      )}
+
+      <div className="app-section file-viewer-body">
+        {isPdf ? (
+          <iframe
+            src={url}
+            title={fileName}
+            className="file-viewer-frame"
+          />
+        ) : (
+          <div className="file-viewer-fallback">
+            <p>
+              This file type cannot be previewed here. Use the button above to
+              open or download it.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

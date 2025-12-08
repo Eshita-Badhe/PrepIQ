@@ -8,33 +8,59 @@ import UploadDocs from "./apps/Upload";
 import ChatBot from "./apps/ChatBot";
 import { Explorer } from "./apps/ExplorerApp";
 import FileViewerApp from "./apps/FileViewerApp";
-import {
-  NotepadApp,
-  CalculatorApp,
-  BrowserApp,
-  SystemInfoApp,
-} from "./apps/SystemApps";
 import "./styles/win7.css";
 import wallpaperImg from "./assets/wallpaper.jpg";
 import { DraggableCalendar, renderYearCalendar } from "./components/Calendar";
 import GenerateNotes from "./apps/GenerateNotes";
 import GenerateMindMap from "./apps/GenerateMindMaps";
+import SettingsApp from "./apps/SettingsApp";
+import FeedbackApp from "./apps/FeedbackApp";
+import GamesApp from "./apps/GamesApp";
+import VoiceBotApp from "./apps/VoiceBot";
+import PlannerApp from "./apps/PlannerApp";
+import NewsApp from "./apps/NewsApp";
+import BrowserApp from "./apps/BrowserApp";
+import NotepadApp from "./apps/Notepad";
 
-const START_ORB = "./start.jpg";
+
+import START_ORB from "./assets/icons/start.png";
+
+// Icons from Flaticon
+import myComputerIcon from "./assets/icons/folder.png";
+import recycleBinIcon from "./assets/icons/recycle-bin.png";
+import userProfileIcon from "./assets/icons/profile.png";
+import settingsIcon from "./assets/icons/settings.png";
+import uploadDocsIcon from "./assets/icons/upload.png";
+import notesIcon from "./assets/icons/notepad.png";
+import generateNotesIcon from "./assets/icons/generate-notes.png";
+import chatBotIcon from "./assets/icons/chatbot.png";
+import voiceBotIcon from "./assets/icons/voicebot.png";
+import plannerIcon from "./assets/icons/planner.png";
+import scheduleIcon from "./assets/icons/calendar.png";
+import gamesIcon from "./assets/icons/puzzle.png";
+import todoIcon from "./assets/icons/checklist.png";
+import studyDiaryIcon from "./assets/icons/diary.png";
+import newsIcon from "./assets/icons/news.png";
+import feedbackIcon from "./assets/icons/feedback.png";
 
 // Desktop Icons
 const desktopIcons = [
-  { id: "mycomp", title: "My Computer", icon: "🗂️", app: "Explorer" },
-  { id: "recycle", title: "Recycle Bin", icon: "🗑️", app: "Explorer" },
-  { id: "profile", title: "User Profile", icon: "👤", app: "Profile" },
-  { id: "chatbot", title: "Chatbot Assistant", icon: "🤖", app: "ChatBot" },
-  { id: "upload", title: "Upload Resources", icon: "📤", app: "UploadDocs" },
-  { id: "generateNotes", title: "Generate Notes", icon: "📝", app: "GenerateNotes" },
-  { id: "generateMindMap", title: "Generate Mind Map", icon: "🧠", app: "GenerateMindMap" },
-  { id: "note", title: "Notes", icon: "🗒️", app: "Notepad" },
-  { id: "browser", title: "Browser", icon: "🌐", app: "Browser" },
-  { id: "calculator", title: "Calculator", icon: "🧮", app: "Calculator" },
-  { id: "sysinfo", title: "System Info", icon: "💻", app: "System Info" },
+  { id: "mycomp",      title: "My Computer",      icon: myComputerIcon,   app: "Explorer" },
+  { id: "recycle",     title: "Recycle Bin",      icon: recycleBinIcon,   app: "RecycleBin" },
+  { id: "profile",     title: "My Profile",       icon: userProfileIcon,  app: "Profile" },
+  { id: "settings",    title: "Settings",         icon: settingsIcon,     app: "Settings" },
+  { id: "upload",      title: "Upload Documents", icon: uploadDocsIcon,   app: "UploadDocs" },
+  { id: "notes",       title: "Take Notes",       icon: notesIcon,        app: "Notepad" },
+  { id: "genNotes",    title: "Generate Notes",   icon: generateNotesIcon,app: "GenerateNotes" },
+  { id: "chatbot",     title: "ChatBot",          icon: chatBotIcon,      app: "ChatBot" },
+  { id: "voicebot",    title: "VoiceBot",         icon: voiceBotIcon,     app: "VoiceBot" },
+  { id: "planner",     title: "Planner",          icon: plannerIcon,      app: "Planner" },
+  { id: "schedule",    title: "Schedule",         icon: scheduleIcon,     app: "Schedule" },
+  { id: "games",       title: "Games",            icon: gamesIcon,        app: "Games" },
+  { id: "todo",        title: "To Do",            icon: todoIcon,         app: "Todo" },
+  { id: "studyDiary",  title: "Study Diary",      icon: studyDiaryIcon,   app: "StudyDiary" },
+  { id: "news",        title: "News",             icon: newsIcon,         app: "News" },
+  { id: "feedback",    title: "Feedback",         icon: feedbackIcon,     app: "Feedback" },
 ];
 
 // App registry
@@ -47,19 +73,13 @@ const appRegistry = {
   GenerateMindMap: GenerateMindMap,
   FileViewerApp: FileViewerApp,
   Notepad: NotepadApp,
-  Calculator: CalculatorApp,
   Browser: BrowserApp,
-  "System Info": SystemInfoApp,
-  Progress: () => (
-    <div style={{ padding: 20 }}>
-      <h3>Progress</h3>
-    </div>
-  ),
-  History: () => (
-    <div style={{ padding: 20 }}>
-      <h3>History</h3>
-    </div>
-  ),
+  Settings: SettingsApp,
+  Feedback: FeedbackApp,
+  Games: GamesApp,
+  VoiceBot: VoiceBotApp,
+  Planner: PlannerApp,
+  News: NewsApp,
 };
 
 /* ====== Taskbar (Win7-style) ======= */
@@ -145,15 +165,15 @@ function Taskbar({
 
       {/* Right side: tray + clock */}
       <div className="taskbar-right">
-        <span title="Battery">🔋</span>
-        <span title="Volume">🔊</span>
-        <span title="Network">📶</span>
+        <span title="Battery"></span>
+        <span title="Volume"></span>
+        <span title="Network"></span>
         <button
           className="tray-btn"
           title={darkMode ? "Light mode" : "Dark mode"}
           onClick={() => setDarkMode((d) => !d)}
         >
-          {darkMode ? "🌞" : "🌙"}
+          {/* {darkMode ? "🌞" : "🌙"} */}
         </button>
 
         <div
@@ -302,16 +322,23 @@ export default function Win7Desktop() {
 
   const displayName = currentUser?.username || "User";
 
-  const allPrograms = [
+const allPrograms = [
   { name: "Profile", icon: "👤" },
   { name: "Explorer", icon: "🗂️" },
   { name: "UploadDocs", icon: "📤", label: "Upload Resources" },
   { name: "ChatBot", icon: "🤖", label: "Chatbot Assistant" },
-  { name: "Notepad", icon: "🗒️" },
-  { name: "Browser", icon: "🌐" },
+  { name: "Notepad", icon: "🗒️", label: "Notepad" },
+  { name: "Browser", icon: "🌐", label: "Resource Browser" },
   { name: "Calculator", icon: "🧮" },
   { name: "System Info", icon: "💻" },
+  { name: "Settings", icon: "⚙️", label: "Settings" },
+  { name: "Feedback", icon: "✉️", label: "Feedback" },
+  { name: "Games", icon: "🎮", label: "Study Games" },
+  { name: "VoiceBot", icon: "🎙️", label: "Voice Companion" },
+  { name: "Planner", icon: "📅", label: "Study Planner" },
+  { name: "News", icon: "📰", label: "Domain News" },
 ];
+
 
   const recent = [
     { id: 1, name: "Profile" },
@@ -345,14 +372,10 @@ export default function Win7Desktop() {
 
       {/* Desktop Icons */}
       <div className="desktop-icons">
-        {desktopIcons.map((ic) => (
-          <div
-            key={ic.id}
-            className="icon"
-            onDoubleClick={() => openAppByName(ic.app)}
-          >
-            <div className="thumb">{ic.icon}</div>
-            <div>{ic.title}</div>
+        {desktopIcons.map((item) => (
+          <div key={item.id} className="icon" onDoubleClick={() => openAppByName(item.app)}>
+            <img src={item.icon} alt={item.title} className="thumb" />
+            <div className="title">{item.title}</div>
           </div>
         ))}
       </div>
