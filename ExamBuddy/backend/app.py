@@ -34,7 +34,13 @@ from markupsafe import escape
 
 from datetime import datetime, date, timedelta
 
-load_dotenv()
+from pathlib import Path
+# Load environment variables from .env file
+BASE_DIR = Path(__file__).resolve().parents[1]  # goes to Root/ExamBuddy
+ROOT_DIR = BASE_DIR.parent                      # goes to Root/
+ENV_PATH = ROOT_DIR / ".env"
+
+load_dotenv(dotenv_path=ENV_PATH)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
