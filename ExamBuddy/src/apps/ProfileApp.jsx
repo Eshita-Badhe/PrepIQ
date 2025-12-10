@@ -18,89 +18,138 @@ export default function ProfileApp({ openWindow }) {
   const [savingProfile, setSavingProfile] = useState(false);
 
   // 1. Real backend fetch
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const res = await fetch("http://localhost:5000/api/profile", {
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (!data.success) {
-          setError(data.msg || "Failed to load profile");
-          // fallback mock
-          const fallback = {
-            name: "USER",
-            role: "Student",
-            streak: 0,
-            lastSeen: "Today",
-            details: "",
-            isComplete: false,
-          };
-          setUser(fallback);
-          setProfileForm({
-            name: fallback.name,
-            role: fallback.role,
-            details: fallback.details,
-          });
-        } else {
-          setUser(data.profile);
-          setProfileForm({
-            name: data.profile.name || "",
-            role: data.profile.role || "Student",
-            details: data.profile.details || "",
-          });
-        }
-      } catch (e) {
-        setError("Network error: " + e.message);
-        const fallback = {
-          name: "USER",
-          role: "Student",
-          streak: 0,
-          lastSeen: "Today",
-          details: "",
-          isComplete: false,
-        };
-        setUser(fallback);
-        setProfileForm({
-          name: fallback.name,
-          role: fallback.role,
-          details: fallback.details,
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadProfile();
-  }, []);
+  // useEffect(() => {
+  //   async function loadProfile() {
+  //     try {
+  //       const res = await fetch("http://localhost:5000/api/profile", {
+  //         credentials: "include",
+  //       });
+  //       const data = await res.json();
+  //       if (!data.success) {
+  //         setError(data.msg || "Failed to load profile");
+  //         // fallback mock
+  //         const fallback = {
+  //           name: "USER",
+  //           role: "Student",
+  //           streak: 0,
+  //           lastSeen: "Today",
+  //           details: "",
+  //           isComplete: false,
+  //         };
+  //         setUser(fallback);
+  //         setProfileForm({
+  //           name: fallback.name,
+  //           role: fallback.role,
+  //           details: fallback.details,
+  //         });
+  //       } else {
+  //         setUser(data.profile);
+  //         setProfileForm({
+  //           name: data.profile.name || "",
+  //           role: data.profile.role || "Student",
+  //           details: data.profile.details || "",
+  //         });
+  //       }
+  //     } catch (e) {
+  //       setError("Network error: " + e.message);
+  //       const fallback = {
+  //         name: "USER",
+  //         role: "Student",
+  //         streak: 0,
+  //         lastSeen: "Today",
+  //         details: "",
+  //         isComplete: false,
+  //       };
+  //       setUser(fallback);
+  //       setProfileForm({
+  //         name: fallback.name,
+  //         role: fallback.role,
+  //         details: fallback.details,
+  //       });
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   }
+  //   loadProfile();
+  // }, []);
 
-// 2. Load memories point-wise (real backend now)
 useEffect(() => {
-  async function loadMemories() {
-    if (!showMemory) return;
+  // fake loading delay for prototype
+  const timer = setTimeout(() => {
+    const mockProfile = {
+      name: "Eshita Badhe",
+      role: "Computer Science Student",
+      streak: 7,
+      lastSeen: "Today, 6:00 PM",
+      details: "Building AI-powered tools",
+      isComplete: true,
+    };
 
-    try {
-      const res = await fetch("http://localhost:5000/api/memories", {
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!data.success) {
-        console.error("Failed to load memories:", data.msg);
-        return;
-      }
-      const storedMemories = data.memories || [];
-      setMemories([]);
-      storedMemories.forEach((mem, index) => {
-        setTimeout(() => {
-          setMemories((prev) => [...prev, mem]);
-        }, index * 400);
-      });
-    } catch (e) {
-      console.error("Memory fetch error:", e);
-    }
+    setUser(mockProfile);
+    setProfileForm({
+      name: mockProfile.name,
+      role: mockProfile.role,
+      details: mockProfile.details,
+    });
+    setLoading(false);
+  }, 400);
+
+  return () => clearTimeout(timer);
+}, []);
+
+  // 2. Load memories point-wise (real backend now)
+// useEffect(() => {
+//   async function loadMemories() {
+//     if (!showMemory) return;
+
+//     try {
+//       const res = await fetch("http://localhost:5000/api/memories", {
+//         credentials: "include",
+//       });
+//       const data = await res.json();
+//       if (!data.success) {
+//         console.error("Failed to load memories:", data.msg);
+//         return;
+//       }
+//       const storedMemories = data.memories || [];
+//       setMemories([]);
+//       storedMemories.forEach((mem, index) => {
+//         setTimeout(() => {
+//           setMemories((prev) => [...prev, mem]);
+//         }, index * 400);
+//       });
+//     } catch (e) {
+//       console.error("Memory fetch error:", e);
+//     }
+//   }
+//   loadMemories();
+// }, [showMemory]);
+
+useEffect(() => {
+  if (!showMemory) {
+    setMemories([]);
+    return;
   }
-  loadMemories();
-}, [showMemory]);
 
+  const mockMemories = [
+    "Prefers AI-powered explanations",
+    "Focus: exam preparation platforms",
+    "Frequently codes late at night",
+    "Interested in React, Python, and RAG systems",
+  ];
+
+  setMemories([]);
+  const timers = [];
+
+  mockMemories.forEach((mem, index) => {
+    const t = setTimeout(() => {
+      setMemories((prev) => [...prev, mem]);
+    }, index * 400);
+    timers.push(t);
+  });
+
+  return () => timers.forEach(clearTimeout);
+}, [showMemory]);
 
   if (loading) return <div>Loading user profile...</div>;
   if (!user) return <div>Unable to load profile. {error}</div>;
@@ -301,12 +350,6 @@ useEffect(() => {
           🕒 View History
         </button>
 
-        <button
-          className="action-btn"
-          onClick={() => alert("Notes App Opening...")}
-        >
-          📝 My Notes
-        </button>
 
         {!user.isComplete && (
           <button className="action-btn" onClick={openProfileFormWindow}>

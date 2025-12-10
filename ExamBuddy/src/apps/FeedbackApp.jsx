@@ -1,6 +1,5 @@
 // FeedbackApp.jsx
 import { useState } from "react";
-import axios from "axios";
 import "../styles/app.css";
 
 export default function FeedbackApp() {
@@ -9,15 +8,12 @@ export default function FeedbackApp() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setStatus("");
-    await axios.post("/api/feedback", { text });
-    setText("");
+    setStatus("");setText("");
     setStatus("Thanks for your feedback!");
   };
 
   return (
     <div className="feedback-app">
-      <h2>Feedback</h2>
       <form onSubmit={handleSubmit}>
         <textarea
           value={text}

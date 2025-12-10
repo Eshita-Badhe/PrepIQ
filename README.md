@@ -23,6 +23,10 @@
   <li>📂 <strong>Document &amp; progress management</strong>: Secure upload and organization of documents, plus dashboards for progress, streaks, and analytics.  </li>
 </ul>
 
+<h2>Workflow</h2>
+<img src="./assets/PrepIQ - Workflow.png" alt="PrepIQ Workflow" width="720" />
+  <br />
+
 <h2>🖼 Demo (Early UI)</h2>
 <p><em>Note: These are early-stage mockups</em>  </p>
 <ul>
@@ -68,6 +72,7 @@
   <em>Main menu – quick access to notes, quizzes, planner, and more.</em>
 </p>
 
+<p> <img src="./assets/profile.png" alt="PrepIQ profile dashboard" width="720" /> <br /> <em>Profile app – overview of streaks, status, context memory and account controls.</em> </p> 
 
 <p>
   <img src="./assets/uploading.png" alt="Uploading documents" width="720" />
@@ -92,6 +97,18 @@
   <br />
   <em>Generated notes – AI-created, syllabus-aligned study material.</em>
 </p>
+
+<p> <img src="./assets/chatbot.png" alt="PrepIQ chatbot assistant" width="720" /> <br /> <em>Chatbot app – conversational assistant for instant doubt‑solving and exam guidance.</em> </p>
+
+<p> <img src="./assets/voicebot.png" alt="PrepIQ voice assistant" width="720" /> <br /> <em>Voice bot – light themed cyan microphone UI for hands‑free queries.</em> </p> 
+
+<p> <img src="./assets/planner.png" alt="PrepIQ exam planner" width="720" /> <br /> <em>Planner app – one‑day cyber security exam plan with timed study cards and completion states.</em> </p> <p> <img src="./assets/games.png" alt="PrepIQ games hub" width="720" /> <br /> <em>Games app – quiz, riddles, flashcards and active recall modes with game history and chatbot launch.</em> </p> 
+
+<p> <img src="./assets/news.png" alt="PrepIQ news reader" width="720" /> <br /> <em>News app – curated cyber security headlines in a clean card‑based feed.</em> </p> 
+
+<p> <img src="./assets/msg.png" alt="PrepIQ network messaging" width="720" /> <br /> <em>Network app – messaging style interface to chat with mentors and study groups.</em> </p> 
+
+<p> <img src="./assets/feedback.png" alt="PrepIQ feedback form" width="720" /> <br /> <em>Feedback app – lightweight form for students to share suggestions about PrepIQ.</em> </p>
 
 <h2>🧩 System Workflow</h2>
 <ul>

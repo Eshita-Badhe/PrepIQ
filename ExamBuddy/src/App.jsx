@@ -21,7 +21,7 @@ import PlannerApp from "./apps/PlannerApp";
 import NewsApp from "./apps/NewsApp";
 import BrowserApp from "./apps/BrowserApp";
 import NotepadApp from "./apps/Notepad";
-
+import NetworkApp from "./apps/NetworkApp";
 
 import START_ORB from "./assets/icons/start.png";
 
@@ -42,7 +42,7 @@ import todoIcon from "./assets/icons/checklist.png";
 import studyDiaryIcon from "./assets/icons/diary.png";
 import newsIcon from "./assets/icons/news.png";
 import feedbackIcon from "./assets/icons/feedback.png";
-
+import msgIcon from "./assets/icons/msg.png"
 // Desktop Icons
 const desktopIcons = [
   { id: "mycomp",      title: "My Computer",      icon: myComputerIcon,   app: "Explorer" },
@@ -60,6 +60,7 @@ const desktopIcons = [
   { id: "todo",        title: "To Do",            icon: todoIcon,         app: "Todo" },
   { id: "studyDiary",  title: "Study Diary",      icon: studyDiaryIcon,   app: "StudyDiary" },
   { id: "news",        title: "News",             icon: newsIcon,         app: "News" },
+  { id: "msg",         title: "Message",          icon: msgIcon,          app: "Message"},
   { id: "feedback",    title: "Feedback",         icon: feedbackIcon,     app: "Feedback" },
 ];
 
@@ -80,6 +81,7 @@ const appRegistry = {
   VoiceBot: VoiceBotApp,
   Planner: PlannerApp,
   News: NewsApp,
+  Message: NetworkApp,
 };
 
 /* ====== Taskbar (Win7-style) ======= */
