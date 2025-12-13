@@ -6,16 +6,20 @@
 Open your terminal (Command Prompt or PowerShell) and run:
 ```
 git clone https://github.com/Eshita-Badhe/PrepIQ
-cd  PrepIQ/ExanBuddy
+cd  PrepIQ
 ```
 
 
 ### 2. Install Dependencies
 This installs all the required libraries (like React and Vite) listed in `package.json`.
 ```
-npm install
+pip install -r requirements.txt
 ```
 
+```
+cd ExamBuddy
+npm install
+```
 ### 3. Run the Development Server
 Start the local server to see your app in the browser:
 ```
