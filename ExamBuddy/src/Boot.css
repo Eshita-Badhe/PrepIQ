@@ -1,13 +1,21 @@
+/* Base layout */
 .bios-bg {
-  background: #192ab7;
-  width: 100vw;
-  height: 100vh;
+  background: #192ab7;          /* better on mobile than 100vh [web:10] */
   font-family: 'Consolas', 'Courier New', monospace;
   color: #fff;
   letter-spacing: 0.5px;
   padding: 0;
   margin: 0;
+  min-height: 100vh;
 }
+
+/* Optional page padding so content is not flush to edges */
+.bios-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 12px 52px;      /* bottom space for fixed footer */
+}
+
 .bios-title {
   background: #2323eb;
   color: #fff;
@@ -16,14 +24,18 @@
   font-weight: bold;
   border-bottom: 2px solid #96aaff;
 }
+
+/* Top menu */
 .bios-menu-row {
   background: #2323eb;
   border-bottom: 1.7px solid #96aaff;
   padding: 3px 16px;
   font-size: 0.93rem;
   display: flex;
-  gap: 34px;
+  flex-wrap: wrap;              /* allow wrapping on narrow screens [web:11] */
+  gap: 12px;
 }
+
 .bios-menu-btn {
   padding: 1.6px 9px;
   background: #1a1afc;
@@ -31,47 +43,68 @@
   border-radius: 3px;
   margin-right: 4px;
   border: 1.2px solid #5e7ff7;
+  white-space: nowrap;
 }
+
 .bios-menu-btn.active {
   background: #fefefe;
   color: #2323eb;
   font-weight: bold;
   border: 1.2px solid #3b4cf2;
 }
+
+.bios-main-wrapper {
+  flex: 1 1 auto;             
+  overflow-y: auto;
+  padding: 20px 22px 0 22px;
+  box-sizing: border-box;
+}
+
+/* Main 3-column area */
 .bios-main {
   display: flex;
   flex-direction: row;
-  height: 290px;
-  margin: 28px 22px 0 22px;
-  background: #0c18a6;
+  gap: 0;
+  margin: 20px 0 0 0;
+  background: #2323eb;
   border: 2px solid #68a4f3;
   border-radius: 7px;
   box-shadow: 0 2px 15px #222;
+  height: 100%;
 }
-.bios-section-left, .bios-section-center, .bios-section-right {
-  flex: 1;
-  padding: 20px 14px;
+
+/* Let height be content-driven instead of fixed 290px */
+.bios-section-left,
+.bios-section-center,
+.bios-section-right {
+  flex: 1 1 0;
+  padding: 16px 12px;
   background: #07117b;
   border-right: 1.5px solid #4169ec55;
   min-width: 0;
 }
+
 .bios-section-left {
   border-right: 1.5px solid #49caf8aa;
 }
+
 .bios-section-right {
   border-right: none;
   background: #143cc1;
 }
+
 .bios-section-title {
   font-weight: bold;
   color: #ffd700;
   margin-bottom: 9px;
 }
+
 .bios-section-entry {
   margin-bottom: 10px;
   color: #e3f2fd;
   font-size: 1rem;
 }
+
 .bios-section-value {
   color: #94fffa;
   background: #0a1747;
@@ -79,29 +112,34 @@
   border-radius: 3px;
   font-weight: bold;
 }
+
+/* Selector box */
 .bios-selector-box {
   background: #2224ae;
   border: 2.6px solid #fff;
   border-radius: 4px;
   position: relative;
   min-height: 94px;
-  width: 238px;
-  margin: 0 auto;
-  margin-top: 22px;
+  max-width: 260px;
+  width: 100%;
+  margin: 22px auto 0 auto;
   box-shadow: 0 3px 15px #134c7d44;
   padding: 13px 10px;
 }
+
 .bios-select-title {
   color: #f8fdff;
   font-weight: bold;
   margin-bottom: 9px;
   font-size: 1rem;
 }
+
 .bios-option-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
+
 .bios-option {
   background: #070f30;
   color: #fff;
@@ -114,6 +152,7 @@
   cursor: pointer;
   transition: background 0.16s;
 }
+
 .bios-option.selected {
   background: #eef8ff;
   color: #212ecb;
@@ -121,29 +160,115 @@
   font-weight: bold;
   box-shadow: 0 3px 12px #1565c089;
 }
+
+/* Help text */
 .bios-help-title {
   font-weight: bold;
   color: #60fdff;
   margin-bottom: 9px;
 }
+
 .bios-help-text {
-  font-size: 0.97rem;
+  font-size: 0.95rem;
   color: #eaf7ff;
   line-height: 1.45;
 }
+
+/* Footer */
 .bios-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
   background: #2323eb;
   border-top: 1.6px solid #96aaff;
-  padding: 7px 21px;
+  padding: 7px 16px;
   font-size: 0.89rem;
   position: fixed;
-  bottom: 0; left: 0; width: 100vw;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
+
 .bios-version {
   margin-left: auto;
   color: #bdbdbd;
   font-size: 0.86rem;
+}
+
+/* --------- Breakpoints --------- */
+
+/* Tablet and down: reduce gaps, font sizes slightly */
+@media (max-width: 900px) {
+  .bios-title {
+    font-size: 1rem;
+    padding: 8px 14px;
+  }
+
+  .bios-main {
+    margin-top: 16px;
+  }
+
+  .bios-section-entry,
+  .bios-option,
+  .bios-help-text {
+    font-size: 0.95rem;
+  }
+}
+
+/* Mobile: stack columns, relax widths */
+@media (max-width: 768px) {
+  .bios-shell {
+    padding: 8px 8px 52px;
+  }
+
+  .bios-menu-row {
+    gap: 8px;
+    padding: 4px 10px;
+    font-size: 0.88rem;
+  }
+
+  .bios-main {
+    flex-direction: column;      /* stack 3 columns [web:6][web:12] */
+  }
+
+  .bios-section-left,
+  .bios-section-center,
+  .bios-section-right {
+    border-right: none;
+    border-bottom: 1px solid #4169ec55;
+  }
+
+  .bios-section-right {
+    border-bottom: none;
+  }
+
+  .bios-selector-box {
+    max-width: 100%;
+  }
+
+  .bios-footer {
+    font-size: 0.82rem;
+    gap: 8px;
+  }
+
+  .bios-version {
+    margin-left: 0;
+    width: 100%;
+    text-align: right;
+  }
+}
+
+/* Very small devices: tighter typography */
+@media (max-width: 480px) {
+  .bios-title {
+    font-size: 0.95rem;
+  }
+
+  .bios-section-entry,
+  .bios-option,
+  .bios-help-text {
+    font-size: 0.9rem;
+  }
 }

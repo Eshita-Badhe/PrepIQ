@@ -1,67 +1,70 @@
+/* Background wrapper */
 .win7-window-bg {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   background: linear-gradient(180deg,#eaf6ff 0%, #c6e2fc 70%, #d9edfa 100%);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 12px;              /* breathing room on small screens */
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
+/* Main window */
 .win7-window {
-  width: 97%;
-  height: 95vh;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 96vh;
   background: #f8fbff;
   border-radius: 10px;
-  border: 10px solid  linear-gradient(120deg, #95ccf0 40%, #c8e7f9 100%);
+  border: 10px solid #95ccf0; /* solid color fallback */
   box-shadow: 0 8px 56px 0 #2187e7cc, 0 2px 10px #49618b55;
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
+/* Title bar */
 .win7-title-bar {
   min-height: 40px;
   background: linear-gradient(150deg, #1871ac 40%, #b0c9d7 100%);
   color: #fff;
   font-weight: bold;
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   border-radius: 9px 9px 0 0;
   box-shadow: 0 1px 4px #3997f366;
   border-bottom: 1.2px solid #8cc1ec;
   display: flex;
   align-items: center;
-  padding-left: 12px;
-  padding-right: 14px;
+  padding: 0 10px;
   user-select: none;
 }
 
 .win7-title {
   flex: 1;
-  font-size: 1.02rem;
+  font-size: 1rem;
   color: #fff;
   text-shadow: 1px 1px 7px #1976d2bb;
   font-family: 'Segoe UI', Arial, sans-serif;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.4px;
 }
 
 .win7-window-icons {
   display: flex;
-  gap: 7px;
-  margin-right: 16px;
+  gap: 6px;
+  margin-left: 8px;
 }
 
 .win7-title-icon {
-  display: inline-block;
   width: 20px;
   height: 20px;
   line-height: 18px;
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: #3997f3;
   background: #e6edf7;
   border-radius: 3px;
-  margin-left: 3px;
-  margin-right: 2px;
   border: 1px solid #b5c7df;
   text-align: center;
   box-shadow: 0 1px 2px #306bb588;
@@ -73,10 +76,12 @@
   color: #1565c0;
 }
 
+/* Form area */
 .win7-form {
-  padding: 27px 36px 18px 36px;
+  padding: 22px 26px 18px 26px;
   border-radius: 0 0 6px 6px;
   background: #f8fbff;
+  overflow-y: auto;
 }
 
 .win7-form-section {
@@ -85,44 +90,49 @@
 }
 
 .win7-user-icon {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
   color: #666;
   background: #f8fbff;
   border-radius: 7px;
   width: 38px;
   text-align: center;
-  margin-left: 14px;
-  margin-bottom: 18px;
+  margin-left: 6px;
+  margin-bottom: 16px;
 }
 
 .win7-form-row {
   display: flex;
   align-items: center;
-  gap: 13px;
-  margin-bottom: 13px;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap; /* allow label/input wrap on small screens [web:11] */
 }
 
 .win7-form-row label {
-  min-width: 300px;
+  min-width: 240px;
+  max-width: 100%;
   color: #254d8f;
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 400;
   font-family: 'Segoe UI', Arial, sans-serif;
 }
 
-.win7-form-row input[type="text"], 
+/* Inputs become fluid */
+.win7-form-row input[type="text"],
 .win7-form-row input[type="email"],
-.win7-form-row input[type="number"], 
+.win7-form-row input[type="number"],
 .win7-form-row input[type="password"] {
   border: 1.5px solid #b8d6f9;
   border-radius: 5px;
-  font-size: 1.09rem;
-  padding: 7px 12px;
-  width: 500px;
-  height: 30px;
+  font-size: 1rem;
+  padding: 7px 10px;
+  width: 100%;
+  max-width: 500px;
+  height: 34px;
   background: #e6f1fa;
   color: #2970b3;
   font-family: 'Segoe UI', Arial, sans-serif;
+  box-sizing: border-box;
   box-shadow: 0 1px 8px #bdd7f244;
 }
 
@@ -132,41 +142,45 @@
 }
 
 .win7-radio-group label {
-  margin-right: 22px;
+  margin-right: 18px;
 }
 
 .win7-form-desc {
   background: #e5f3ff;
   border: 1px solid #caf0ff;
   border-radius: 5px;
-  padding: 12px 14px;
-  font-size: 0.97rem;
+  padding: 10px 12px;
+  font-size: 0.9rem;
   color: #31648e;
   margin-bottom: 7px;
-  margin-left: 151px;
+  margin-left: 0;
+  margin-top: 4px;
   box-shadow: 0 1px 9px #b6c2e9cc;
   font-family: 'Segoe UI', Arial, sans-serif;
+  max-width: 100%;
 }
 
 .win7-form-row input[type="checkbox"] {
   accent-color: #1976d2;
 }
 
+/* Buttons row */
 .win7-form-btns {
   display: flex;
-  gap: 11px;
+  gap: 10px;
   justify-content: flex-start;
-  margin-left: 151px;
-  margin-top: 12px;
+  margin-left: 0;
+  margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .win7-btn {
-  padding: 7px 30px;
+  padding: 7px 22px;
   border-radius: 7px;
   border: 1.4px solid #b8d6f9;
   background: linear-gradient(150deg, #648fac 40%, #c8e7f9 100%);
   color: #fff;
-  font-size: 1.08rem;
+  font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
   font-family: 'Segoe UI', Arial, sans-serif;
@@ -192,22 +206,88 @@
   cursor: not-allowed;
 }
 
+/* Dialog */
 .win7-dialog-bg {
-  position: fixed; left:0; top:0; width:100vw; height:100vh;
-  background: rgba(180,220,255,0.18); backdrop-filter: blur(1.4px);
-  z-index: 1200; display: flex; align-items:center; justify-content:center;
+  position: fixed;
+  left: 0; top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(180,220,255,0.18);
+  backdrop-filter: blur(1.4px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
 }
+
 .win7-dialog {
   background: linear-gradient(90deg, #fafdff 30%, #d2e8f8 100%);
   border: 2px solid #b8d6f9;
   border-radius: 10px;
   box-shadow: 0 12px 42px #3997f344;
-  padding: 32px 35px 22px 35px;
+  padding: 24px 22px 18px 22px;
   color: #2970b3;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 1.16rem;
+  font-size: 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 320px;
+  min-width: 280px;
+  max-width: 90vw;
+}
+
+/* --------- Breakpoints --------- */
+
+@media (max-width: 900px) {
+  .win7-form {
+    padding: 18px 16px 14px 16px;
+  }
+
+  .win7-title-bar {
+    font-size: 1rem;
+  }
+
+  .win7-form-row label {
+    min-width: 200px;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .win7-window-bg {
+    padding: 8px;
+  }
+
+  .win7-window {
+    max-height: 100vh;          /* use scrolling inside on very small screens */
+  }
+
+  .win7-title-bar {
+    padding: 0 8px;
+    font-size: 0.95rem;
+  }
+
+  .win7-form-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .win7-form-row label {
+    min-width: 0;
+  }
+
+  .win7-user-icon {
+    margin-left: 0;
+  }
+
+  .win7-form-btns {
+    justify-content: flex-start;
+  }
+
+  .win7-btn {
+    width: 100%;
+    text-align: center;
+  }
 }

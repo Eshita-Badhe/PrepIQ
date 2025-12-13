@@ -1,58 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './Boot.css';
 import { useNavigate } from 'react-router-dom';
 
 const options = [
-  { label: 'Start Setup Wizard', value: 'setup' },
-  { label: 'Go to Login Screen', value: 'login' }
+  { label: 'Setup Account', value: 'setup' },
+  { label: 'Login to Dashboard', value: 'login' }
 ];
 
 export default function Boot() {
   const [selected, setSelected] = useState(0);
   const navigate = useNavigate();
 
-  const handleOptionClick = (value) => {
-    if (value === 'setup') {
-      navigate('/register'); // Redirect to Registration page
-    } else if (value === 'login') {
-      navigate('/login'); // Redirect to Login page
-    }
-  };
+  const handleOptionClick = useCallback(
+    (value) => {
+      if (value === 'setup') navigate('/register');
+      if (value === 'login') navigate('/login');
+    },
+    [navigate]
+  );
 
+  // Keyboard handler on window so it works immediately
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelected((prev) => (prev === 0 ? options.length - 1 : prev - 1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelected((prev) => (prev === options.length - 1 ? 0 : prev + 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleOptionClick(options[selected].value);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleOptionClick, selected]);
 
   return (
     <div className="bios-bg">
       <div className="bios-title">
-        Exam Buddy Setup Utility - Copyright (C) 2025 Exam Buddy Team
+        PrepIQ Setup Utility – Exam Prep Workspace
       </div>
+
       <div className="bios-menu-row">
-        <span className="bios-menu-btn active">Project</span>
-        <span className="bios-menu-btn">Account</span>
-        <span className="bios-menu-btn">Info</span>
-        <span className="bios-menu-btn">Exit</span>
+        <span className="bios-menu-btn active">#workspace</span>
+        <span className="bios-menu-btn">#planner</span>
+        <span className="bios-menu-btn">#wellbeing</span>
+        <span className="bios-menu-btn">#privacy</span>
       </div>
+
       <div className="bios-main">
         <div className="bios-section-left">
-          <div className="bios-section-title">Exam Buddy Boot Mode</div>
+          <div className="bios-section-title">PrepIQ Profile</div>
+
           <div className="bios-section-entry">
             Mode: <span className="bios-section-value">Student</span>
           </div>
-          <div className="bios-section-entry">Smart Study Planner: <span className="bios-section-value">Enabled</span></div>
-          <div className="bios-section-entry">Notes Import: <span className="bios-section-value">Supported</span></div>
-          <div className="bios-section-entry">Productivity Suite: <span className="bios-section-value">Active</span></div>
+          <div className="bios-section-entry">
+            Chatbot: <span className="bios-section-value">Uses Your Notes</span>
+          </div>
+          <div className="bios-section-entry">
+            Planner: <span className="bios-section-value">Exam‑Aware</span>
+          </div>
+          <div className="bios-section-entry">
+            Result: <span className="bios-section-value">Your Progress</span>
+          </div>
+          <div className="bios-section-entry">
+            Engine: <span className="bios-section-value">Offline‑Friendly</span>
+          </div>
         </div>
+
         <div className="bios-section-center">
           <div className="bios-selector-box">
-            <div className="bios-select-title">Select Action</div>
+            <div className="bios-select-title">Startup Action</div>
             <div className="bios-option-list">
               {options.map((opt, i) => (
                 <div
                   key={opt.value}
                   className={`bios-option${selected === i ? ' selected' : ''}`}
                   onMouseEnter={() => setSelected(i)}
-                  onClick={() => handleOptionClick(opt.value)} // Click event
-                  tabIndex={0}
-                  style={{cursor: "pointer"}}
+                  onClick={() => handleOptionClick(opt.value)}
+                  style={{ cursor: 'pointer' }}
                 >
                   {opt.label}
                 </div>
@@ -60,27 +90,28 @@ export default function Boot() {
             </div>
           </div>
         </div>
+
         <div className="bios-section-right">
-          <div className="bios-help-title">About Exam Buddy</div>
+          <div className="bios-help-title">Key features</div>
           <div className="bios-help-text">
-            All-in-one platform for exam preparation.<br />
-            Features: <br />
-            &bull; Personalized planning<br />
-            &bull; Customization according to syllabus and exam pattern<br />
-            &bull; Notes import<br />
-            &bull; Sample papers<br />
-            &bull; Progress tracking<br />
-            &bull; Focus games & streaks
+            • Chatbot answers from your notes and books.<br />
+            • Study plan built from syllabus and exam dates.<br />
+            • Personlised games to enjoy studying.<br />
+            • Streaks and badges to keep you consistent.<br />
+            • Note your progress.<br />
+            • Voice - Support.<br />
+            • Offline - Support
           </div>
         </div>
       </div>
+
       <div className="bios-footer">
         <span>Select: [Enter]</span>
-        <span>Change Option: [↑/↓]</span>
-        <span>Help: [F1]</span>
-        <span>Full Screen: [F11]</span>
-        <span>Exit: [Esc]</span>
-        <span className="bios-version">Version 1.0.0. Copyright (C) 2025 Exam Buddy Team.</span>
+        <span>Change: [↑/↓]</span>
+        <span>Full screen: [F11]</span>
+        <span className="bios-version">
+          PrepIQ · The AI-Powered Study Workspace · v1.0.0
+        </span>
       </div>
     </div>
   );
