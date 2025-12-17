@@ -61,24 +61,34 @@ login_manager.init_app(app)
 
 # ---------- Supabase setup ----------
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")  # service role or anon, but service role recommended on server
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("WARNING: SUPABASE_URL or SUPABASE_KEY not set. Supabase client will not work properly.")
+if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+    print("WARNING: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Supabase server client will not work properly.")
 
-supabase: Client | None = None
+supabase_server: Client | None = None
+supabase_anon: Client | None = None
+
 try:
-    if SUPABASE_URL and SUPABASE_KEY:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        # bypasses RLS – full CRUD for trusted backend logic
+        supabase_server = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+    if SUPABASE_URL and SUPABASE_ANON_KEY:
+        # respects RLS – use when you want policies to apply
+        supabase_anon = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
 except Exception as e:
-    print("Error creating Supabase client:", e)
-    supabase = None
+    print("Error creating Supabase clients:", e)
+    supabase_server = None
+    supabase_anon = None
 
 STORAGE_BUCKET = "user-resources"  # create this in Supabase
 
 # ---------- Helpers ----------
 def supabase_available():
-    if supabase is None:
+    if supabase_server is None:
         print("Supabase client not initialized. Check SUPABASE_URL / SUPABASE_KEY.")
         return False
     return True
@@ -92,7 +102,7 @@ def safe_single_row(table_name: str, select_cols: str, **filters):
         return None, "Supabase not configured"
 
     try:
-        query = supabase.table(table_name).select(select_cols)
+        query = supabase_server.table(table_name).select(select_cols)
         for col, val in filters.items():
             query = query.eq(col, val)
         response = query.maybe_single().execute()
@@ -223,7 +233,7 @@ def api_register():
         if not supabase_available():
             return jsonify({"error": "Supabase not configured"}), 500
 
-        insert = supabase.table("users").insert({
+        insert = supabase_server.table("users").insert({
             "username": username,
             "password_hash": hashed_password,
             "email": email,
@@ -321,7 +331,7 @@ def api_profile():
     try:
         # users table: get base info
         user_resp = (
-            supabase.table("users")
+            supabase_server.table("users")
             .select("id, username, email")
             .eq("id", str(current_user.id))
             .limit(1)
@@ -338,7 +348,7 @@ def api_profile():
 
         # profiles table: matches screenshot columns
         prof_resp = (
-            supabase.table("profiles")
+            supabase_server.table("profiles")
             .select("full_name, role, streak, last_seen, details")
             .eq("id", str(user_id))
             .limit(1)
@@ -394,11 +404,11 @@ def api_profile_update():
         update_fields = {k: v for k, v in update_fields.items() if v is not None}
 
         if update_fields:
-            supabase.table("profiles").update(update_fields).eq("id", user_id).execute()
+            supabase_server.table("profiles").update(update_fields).eq("id", user_id).execute()
 
         # optional: sync username in users table from name
         if data.get("name"):
-            supabase.table("users").update(
+            supabase_server.table("users").update(
                 {"username": data["name"]}
             ).eq("id", user_id).execute()
 
@@ -418,29 +428,29 @@ def api_delete_account():
     try:
         # delete chat messages if not ON DELETE CASCADE from chat_threads
         try:
-            supabase.table("chat_messages").delete().eq("user_id", user_id).execute()
+            supabase_server.table("chat_messages").delete().eq("user_id", user_id).execute()
         except Exception as e:
             print("DELETE chat_messages ERROR (maybe no user_id col):", e)
 
         # delete chat threads
         try:
-            supabase.table("chat_threads").delete().eq("user_id", user_id).execute()
+            supabase_server.table("chat_threads").delete().eq("user_id", user_id).execute()
         except Exception as e:
             print("DELETE chat_threads ERROR:", e)
 
         # delete memories
         try:
-            supabase.table("memories").delete().eq("user_id", user_id).execute()
+            supabase_server.table("memories").delete().eq("user_id", user_id).execute()
         except Exception as e:
             print("DELETE memories ERROR:", e)
 
         # delete profile + user row
-        supabase.table("profiles").delete().eq("id", user_id).execute()
-        supabase.table("users").delete().eq("id", user_id).execute()
+        supabase_server.table("profiles").delete().eq("id", user_id).execute()
+        supabase_server.table("users").delete().eq("id", user_id).execute()
 
         # delete storage folders for this username
         if supabase_available():
-            storage = supabase.storage.from_(STORAGE_BUCKET)
+            storage = supabase_server.storage.from_(STORAGE_BUCKET)
             username_norm = normalize_username(current_user.username)
 
             def delete_prefix(root_type: str):
@@ -494,7 +504,7 @@ def api_activity_ping():
 
     try:
         prof_resp = (
-            supabase.table("profiles")
+            supabase_server.table("profiles")
             .select("streak, last_seen")
             .eq("id", user_id)
             .limit(1)
@@ -525,7 +535,7 @@ def api_activity_ping():
         else:
             streak = 1
 
-        supabase.table("profiles").update(
+        supabase_server.table("profiles").update(
             {"streak": streak, "last_seen": today.isoformat()}
         ).eq("id", user_id).execute()
 
@@ -544,7 +554,7 @@ def api_memories():
 
     try:
         resp = (
-            supabase.table("memories")
+            supabase_server.table("memories")
             .select("summary, created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
@@ -625,7 +635,7 @@ def api_upload_docs():
     saved_paths = []
 
     try:
-        storage = supabase.storage.from_(STORAGE_BUCKET)
+        storage = supabase_server.storage.from_(STORAGE_BUCKET)
 
         for f in files:
             if not f.filename:
@@ -689,7 +699,7 @@ def api_list_root_folders():
     prefix = f"{root_type}/{username}/"     # e.g. "uploaded/Eshita_Badhe/"
 
     # IMPORTANT: pass prefix to list; returned "name" will be RELATIVE
-    resp = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+    resp = supabase_server.storage.from_(STORAGE_BUCKET).list(prefix)
 
     if isinstance(resp, list):
         objects = resp
@@ -737,7 +747,7 @@ def api_list_root_folder_files():
     username = normalize_username(current_user.username)
     prefix = f"{root_type}/{username}/{folder}/"      # e.g. uploaded/Eshita_Badhe/Cyber_Security/
 
-    resp = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+    resp = supabase_server.storage.from_(STORAGE_BUCKET).list(prefix)
 
     if isinstance(resp, list):
         objects = resp
@@ -775,7 +785,7 @@ def api_file_url():
     if not supabase_available():
         return jsonify(success=False, msg="Supabase not configured"), 500
 
-    public_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(key)
+    public_url = supabase_server.storage.from_(STORAGE_BUCKET).get_public_url(key)
     if not public_url:
         return jsonify(success=False, msg=f"No public URL for key: {key}"), 404
 
@@ -860,7 +870,7 @@ def chat():
     try:
         if current_user.is_authenticated:
             mem_resp = (
-                supabase.table("memories")
+                supabase_server.table("memories")
                 .select("summary, created_at")
                 .eq("user_id", str(current_user.id))
                 .order("created_at", desc=True)
@@ -931,7 +941,7 @@ def chat():
         if current_user.is_authenticated and thread_id:
             # Fetch recent messages for this thread for summarization
             msg_resp = (
-                supabase.table("chat_messages")
+                supabase_server.table("chat_messages")
                 .select("role, content, created_at")
                 .eq("thread_id", thread_id)
                 .order("created_at", asc=True)
@@ -948,7 +958,7 @@ def chat():
             if messages_for_summary:
                 summary = summarize_thread_for_memory(messages_for_summary, username)
                 if summary:
-                    supabase.table("memories").insert(
+                    supabase_server.table("memories").insert(
                         {
                             "user_id": str(current_user.id),
                             "thread_id": thread_id,
@@ -973,7 +983,7 @@ def get_user_id_by_username(username: str) -> str | None:
         return None
 
     resp = (
-        supabase
+        supabase_server
         .table("users") 
         .select("id")
         .eq("username", username)
@@ -1000,7 +1010,7 @@ def list_threads():
         return jsonify({"threads": []}), 200
 
     resp = (
-        supabase
+        supabase_server
         .table("chat_threads")
         .select("id, title, created_at")
         .eq("user_id", user_id)
@@ -1016,7 +1026,7 @@ def list_threads():
 def get_thread(thread_id):
     # RLS disabled; user_id already enforced via FK and username→id logic
     resp = (
-        supabase
+        supabase_server
         .table("chat_messages")
         .select("role, content, created_at")
         .eq("thread_id", thread_id)
@@ -1054,18 +1064,18 @@ def save_thread():
     # 1) Create thread if new
     if not thread_id:
         thread_id = str(uuid.uuid4())
-        supabase.table("chat_threads").insert({
+        supabase_server.table("chat_threads").insert({
             "id": thread_id,
             "user_id": user_id,
             "title": title,
         }).execute()
     else:
-        supabase.table("chat_threads").update({
+        supabase_server.table("chat_threads").update({
             "title": title,
         }).eq("id", thread_id).eq("user_id", user_id).execute()
 
     # 2) Replace messages for this thread
-    supabase.table("chat_messages").delete().eq("thread_id", thread_id).execute()
+    supabase_server.table("chat_messages").delete().eq("thread_id", thread_id).execute()
 
     now = datetime.utcnow().isoformat()
 
@@ -1080,7 +1090,7 @@ def save_thread():
         })
 
     if backend_rows:
-        supabase.table("chat_messages").insert(backend_rows).execute()
+        supabase_server.table("chat_messages").insert(backend_rows).execute()
 
     return jsonify({"thread": {"id": thread_id, "title": title}})
 
@@ -1257,7 +1267,7 @@ def upload_generated_file_to_supabase(root_type: str, username: str, title: str,
     title_norm = normalize_title(title)
     base_prefix = f"{root_type}/{username_norm}/{title_norm}/"
 
-    storage = supabase.storage.from_(STORAGE_BUCKET)
+    storage = supabase_server.storage.from_(STORAGE_BUCKET)
     saved_paths = []
 
     # file_obj is a single FileStorage here
@@ -1473,7 +1483,7 @@ def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> s
     file_path = f"{username}_MindMaps/{topic}/mindmap.pdf"
     try:
         # Upload with upsert=true to overwrite on regenerate
-        res = supabase.storage.from_(STORAGE_BUCKET).upload(
+        res = supabase_server.storage.from_(STORAGE_BUCKET).upload(
             path=file_path,
             file=pdf_bytes,
             file_options={
