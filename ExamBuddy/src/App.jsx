@@ -288,6 +288,24 @@ export default function Win7Desktop() {
     fetchMe();
   }, []);
 
+  // Inject chatbot widget script once
+  useEffect(() => {
+    // config for the widget
+    window.csbConfig = {
+      botId: "bot_1766492473025_p6f9691itf", // or from props / API
+    };
+
+    const script = document.createElement("script");
+    script.src = "http://localhost:5000/chat-widget.js";
+    script.async = true;
+    document.head.appendChild(script);
+
+    return () => {
+      // optional cleanup if this component ever unmounts
+      script.remove();
+    };
+  }, []);
+
   function openAppByName(name, extraProps = {}) {
     const AppComponent =
       appRegistry[name] ||
@@ -314,6 +332,9 @@ export default function Win7Desktop() {
         }
         if (name === "GenerateMindMap") {
           return <GenerateMindMap username={currentUser?.username} />;
+        }
+        if(name === "VoiceBot") {
+          return <VoiceBotApp username={currentUser?.username} />;
         }
         return <AppComponent openWindow={wmOpenWindow} {...extraProps} />;
       },
@@ -587,6 +608,8 @@ const allPrograms = [
           </div>
         </DraggableCalendar>
       )}
+
+      
 
       {/* Screensaver (Sleep) */}
       {screensaverOpen && (

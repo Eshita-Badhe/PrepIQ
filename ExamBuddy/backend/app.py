@@ -798,7 +798,7 @@ def api_file_url():
 # ---------- Chat Bot ----------
 llm = ChatGroq(
     groq_api_key=GROQ_API_KEY,
-    model_name="llama-3.1-8b-instant",
+    model_name="llama-3.3-70b-versatile",
     temperature=0.2,
     max_tokens=4096,
     timeout=60,
@@ -825,6 +825,8 @@ def chat():
     mode = data.get("mode", "default")  # chat or other modes in future
     topic = data.get("topic")
     extra = data.get("extra", "")
+    agentic = bool(data.get("agentic", False))
+
 
     # ========== MIND MAP MODE ==========
     if mode == "mindmap":
@@ -866,6 +868,43 @@ def chat():
     if not username:
         return jsonify({"reply": "Username is missing."}), 400
 
+    # ---- NEW: agentic path ----
+    from agentic_core import run_agentic_flow
+
+    AUTO_AGENTIC_KEYWORDS = [
+        "my progress",
+        "what do you know about me",
+        "study plan",
+        "schedule",
+        "timetable",
+        "time table",
+        "analyze my progress",
+    ]
+
+    def looks_agentic(text: str) -> bool:
+        t = text.lower()
+        return any(k in t for k in AUTO_AGENTIC_KEYWORDS)
+
+    use_agentic = agentic or looks_agentic(user_message)
+
+    if use_agentic and current_user.is_authenticated:
+        user_id = str(current_user.id)
+        result = run_agentic_flow(
+            groq_api_key=GROQ_API_KEY,
+            supabase_server=supabase_server,
+            supabase_available=supabase_available,
+            system_prompt=SYSTEM_PROMPT,
+            user_id=user_id,
+            username=username,
+            message=user_message,
+            history=history_payload,
+        )
+        return jsonify({
+            "reply": result["reply"],
+            "agent": result.get("agent"),
+            "meta": result.get("meta", {}),
+        })
+    
     memory_summaries = []
     try:
         if current_user.is_authenticated:
@@ -977,6 +1016,31 @@ def chat():
         answer = "I had trouble generating an answer. Please try again."
  
     return jsonify({"reply": answer})
+
+from flask import Blueprint
+from agentic_core import run_agentic_flow 
+
+@app.route("/api/agentic-chat", methods=["POST"])
+def api_agentic_chat():
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    username = (data.get("username") or "").strip()
+    history = data.get("history") or []   # [{role, content}]
+
+    if not message:
+        return jsonify({"error": "message required"}), 400
+    if not username:
+        return jsonify({"error": "username required"}), 400
+
+    user_id = get_user_id_by_username(username)
+    if not user_id:
+        return jsonify({"error": "unknown user"}), 400
+
+    from agentic_core import run_agentic_flow  # local import to avoid circular issues
+
+    result = run_agentic_flow(user_id=str(user_id), username=username, message=message, history=history)
+
+    return jsonify(result), 200
 
 def get_user_id_by_username(username: str) -> str | None:
     if not username:
