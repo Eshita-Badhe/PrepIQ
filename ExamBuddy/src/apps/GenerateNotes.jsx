@@ -326,13 +326,32 @@ const handleDownloadPdf = async () => {
   }
 
   try {
-    const node = previewRef.current;
+    const originalNode = previewRef.current;
 
-    const canvas = await html2canvas(node, {
+    // ---------- 1) CLONE NODE ----------
+    const clone = originalNode.cloneNode(true);
+
+    clone.style.height = "auto";
+    clone.style.maxHeight = "none";
+    clone.style.overflow = "visible";
+    clone.style.position = "absolute";
+    clone.style.left = "-9999px";
+    clone.style.top = "0";
+    clone.style.width = originalNode.offsetWidth + "px";
+    clone.style.background = "#ffffff";
+
+    document.body.appendChild(clone);
+
+    // ---------- 2) CAPTURE FULL CONTENT ----------
+    const canvas = await html2canvas(clone, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#ffffff",
-    }); // high‑res capture [web:21][web:23]
+      windowWidth: clone.scrollWidth,
+      windowHeight: clone.scrollHeight,
+    });
+
+    document.body.removeChild(clone);
 
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF("p", "mm", "a4");
@@ -340,25 +359,26 @@ const handleDownloadPdf = async () => {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
-    const imgWidth = pageWidth - 20;        // 10mm left/right margin
+    const margin = 10;
+    const imgWidth = pageWidth - margin * 2;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
     let heightLeft = imgHeight;
-    let position = 10;
+    let position = margin;
 
-    // first page
-    pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+    // ---------- 3) PAGINATION ----------
+    pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
     heightLeft -= pageHeight;
 
-    // add extra pages for remaining content
     while (heightLeft > 0) {
       pdf.addPage();
-      position = heightLeft - imgHeight + 10; // move image up so the next slice is visible
-      pdf.addImage(imgData, "PNG", 10, position, imgWidth, imgHeight);
+      position = heightLeft - imgHeight + margin;
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
     }
 
     pdf.save(`${topic.replace(/\s+/g, "_")}_notes.pdf`);
+
     setStatusType("ok");
     setStatus("Notes downloaded as styled PDF (full content).");
   } catch (err) {
@@ -367,6 +387,7 @@ const handleDownloadPdf = async () => {
     setStatus("Failed to generate complete PDF.");
   }
 };
+
 
   const handleOpenChatbot = () => {
     if (!notes.trim()) {

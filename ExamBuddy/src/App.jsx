@@ -324,6 +324,9 @@ export default function Win7Desktop() {
         if (name === "ChatBot") {
           return <ChatBot username={currentUser?.username} />;
         }
+        if (name === "Games") {
+          return <GamesApp username={currentUser?.username} />;
+        }
         if (name === "Profile") {
           return <ProfileApp user={currentUser} />;
         }

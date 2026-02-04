@@ -279,8 +279,9 @@ const passwordInfo = useMemo(() => {
                   value="guide"
                   checked={form.accountType === 'guide'}
                   onChange={handleChange}
+                  enabled={false}
                 />
-                Guide
+                Guide (Future feature)
               </label>
             </div>
 

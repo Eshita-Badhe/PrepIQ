@@ -1,6 +1,24 @@
 // GamesApp.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ChatBot from "./ChatBot"; // adjust path if needed
+
+async function fetchGame({ username, topic, gameType }) {
+  if (!username) throw new Error("Username missing");
+
+  const res = await fetch("http://localhost:5000/api/games/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username,
+      topic,
+      game_type: gameType,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Failed to load game");
+  return data.content;
+}
 
 const GAME_TYPES = [
   { id: "quiz", label: "Quiz", icon: "❓" },
@@ -37,12 +55,36 @@ const GAME_HISTORY = [
   },
 ];
 
+async function submitGame({ username, gameType, topic, title, score }) {
+  await fetch("http://localhost:5000/api/games/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username,
+      game_type: gameType,
+      topic,
+      title,
+      score,
+    }),
+  });
+}
+
 export default function GamesApp({ openWindow, username }) {
   const [activeGame, setActiveGame] = useState(null);
   const [gameTitle, setGameTitle] = useState("");
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [history, setHistory] = useState([]);
+
+useEffect(() => {
+  if (!username) return;
+
+  fetch(`http://localhost:5000/api/games/history?username=${username}`)
+    .then((r) => r.json())
+    .then(setHistory)
+    .catch(console.error);
+}, [username]);
 
   function handleSelectGame(id) {
     setActiveGame(id);
@@ -67,48 +109,43 @@ export default function GamesApp({ openWindow, username }) {
     setTimeout(() => setFeedbackStatus(""), 2000);
   }
 
-  function renderGame() {
-    if (!activeGame) {
+function renderGame() {
+  if (!activeGame) {
+    return (
+      <div style={{ fontSize: "0.9rem", color: "#6b7280" }}>
+        This area shows the selected game. Pick a mode on the left or load
+        one from history.
+      </div>
+    );
+  }
+
+  const topic = gameTitle || "Cyber Security";
+
+  switch (activeGame) {
+    case "quiz":
+      return <QuizGame username={username} topic={topic} />;
+    case "riddles":
+      return <RiddlesGame username={username} topic={topic} />;
+    case "flashcards":
+      return <FlashCardsGame username={username} topic={topic} />;
+    case "recall":
+      return <ActiveRecallGame username={username} topic={topic} />;
+    case "mystery":
+      return <MysteryGame username={username} topic={topic} />;
+    case "chatbot":
       return (
-        <div style={{ fontSize: "0.9rem", color: "#6b7280" }}>
-          This area shows the selected game. Pick a mode on the left or load
-          one from history.
+        <div style={{ height: "360px" }}>
+          <ChatBot username={username} />
         </div>
       );
-    }
-
-    switch (activeGame) {
-      case "quiz":
-        return <QuizGame />;
-      case "riddles":
-        return <RiddlesGame />;
-      case "flashcards":
-        return <FlashCardsGame />;
-      case "recall":
-        return <ActiveRecallGame />;
-      case "chatbot":
-        return (
-          <div style={{ height: "360px" }}>
-            <ChatBot username={username} />
-          </div>
-        );
-      default:
-        return (
-          <div
-            style={{
-              padding: 10,
-              borderRadius: 12,
-              border: "1px solid rgba(148,163,184,0.7)",
-              background: "#f9fafb",
-              fontSize: "0.9rem",
-            }}
-          >
-            Simple card‑matching prototype coming soon… use this slot for future
-            games.
-          </div>
-        );
-    }
+    default:
+      return (
+        <div style={{ padding: 10, fontSize: "0.9rem" }}>
+          Simple card-matching prototype coming soon…
+        </div>
+      );
   }
+}
 
   return (
     <div
@@ -278,7 +315,7 @@ export default function GamesApp({ openWindow, username }) {
               gap: 6,
             }}
           >
-            {GAME_HISTORY.map((h) => (
+            {history.map((h) => (
               <button
                 key={h.id}
                 onClick={() => handleLoadHistory(h)}
@@ -303,7 +340,7 @@ export default function GamesApp({ openWindow, username }) {
                     color: "#111827",
                   }}
                 >
-                  {h.title}
+                  {h.title || `${h.game_type} – ${h.topic}`}
                 </div>
                 <div
                   style={{
@@ -311,9 +348,9 @@ export default function GamesApp({ openWindow, username }) {
                     marginBottom: 2,
                   }}
                 >
-                  📅 {h.date}
+                  📅 {new Date(h.created_at).toLocaleString()}
                 </div>
-                <div style={{ color: "#15803d" }}>✅ {h.summary}</div>
+                <div style={{ color: "#15803d" }}>{h.score != null ? `✅ Score: ${h.score}` : "Completed"}</div>
               </button>
             ))}
           </div>
@@ -440,53 +477,68 @@ export default function GamesApp({ openWindow, username }) {
   );
 }
 
-function QuizGame() {
-  const questions = [
-    {
-      id: 1,
-      topic: "Basics",
-      question:
-        "Which option best describes the goal of cyber security?",
-      options: [
-        "To remove all bugs from software",
-        "To protect confidentiality, integrity, and availability of data",
-        "To block all internet traffic",
-        "To monitor social media activity",
-      ],
-      correctIndex: 1,
-    },
-    {
-      id: 2,
-      topic: "Mobile Devices",
-      question:
-        "Which practice most reduces risk when using public Wi‑Fi on a phone?",
-      options: [
-        "Turning off the lock screen",
-        "Using a VPN for network traffic",
-        "Installing apps from unknown sources",
-        "Disabling device encryption",
-      ],
-      correctIndex: 1,
-    },
-    {
-      id: 3,
-      topic: "IT Section",
-      question:
-        "What does least privilege mean in access control?",
-      options: [
-        "Users get access to all company systems",
-        "Users get only the minimum access needed to perform their job",
-        "Admins share one common password",
-        "Guests can edit production servers",
-      ],
-      correctIndex: 1,
-    },
-  ];
-
+function QuizGame({ username, topic }) {
+  const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selected, setSelected] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!username || !topic) return;
+
+    setLoading(true);
+    setError("");
+    setQuestions([]);
+    setCurrentIndex(0);
+    setSelected(null);
+    setShowResult(false);
+    setScore(0);
+
+    fetchGame({ username, topic, gameType: "quiz" })
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error("No quiz questions generated");
+        }
+        setQuestions(data);
+      })
+      .catch((err) => {
+        console.error("Quiz error:", err);
+        setError(err.message || "Failed to load quiz");
+      })
+      .finally(() => setLoading(false));
+  }, [username, topic]);
+
+  if (loading) {
+    return <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Loading quiz…</div>;
+  }
+
+  if (error) {
+    return (
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 12,
+          background: "#fee2e2",
+          border: "1px solid #ef4444",
+          color: "#991b1b",
+          fontSize: "0.85rem",
+        }}
+      >
+        ❌ {error}
+      </div>
+    );
+  }
+
+  if (!questions.length) {
+    return (
+      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+        No questions available.
+      </div>
+    );
+  }
 
   const q = questions[currentIndex];
 
@@ -497,31 +549,123 @@ function QuizGame() {
 
   function handleSubmit() {
     if (selected == null) return;
-    const isCorrect = selected === q.correctIndex;
-    if (isCorrect) setScore((s) => s + 1);
+    if (selected === q.correctIndex) {
+      setScore((s) => s + 1);
+    }
     setShowResult(true);
   }
 
   function handleNext() {
     setSelected(null);
     setShowResult(false);
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex((i) => i + 1);
-    }
+    setCurrentIndex((i) => i + 1);
   }
+
+function QuizGame({ username, topic }) {
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [showResult, setShowResult] = useState(false);
+  const [score, setScore] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!username || !topic) return;
+
+    setLoading(true);
+    setError("");
+    setQuestions([]);
+    setCurrentIndex(0);
+    setSelected(null);
+    setShowResult(false);
+    setScore(0);
+
+    fetchGame({ username, topic, gameType: "quiz" })
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error("No quiz questions generated");
+        }
+        setQuestions(data);
+      })
+      .catch((err) => {
+        console.error("Quiz error:", err);
+        setError(err.message || "Failed to load quiz");
+      })
+      .finally(() => setLoading(false));
+  }, [username, topic]);
+
+  if (loading) {
+    return <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>Loading quiz…</div>;
+  }
+
+  if (error) {
+    return (
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 12,
+          background: "#fee2e2",
+          border: "1px solid #ef4444",
+          color: "#991b1b",
+          fontSize: "0.85rem",
+        }}
+      >
+        ❌ {error}
+      </div>
+    );
+  }
+
+  if (!questions.length) {
+    return (
+      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+        No questions available.
+      </div>
+    );
+  }
+
+  const q = questions[currentIndex];
+
+  function handleOptionClick(idx) {
+    if (showResult) return;
+    setSelected(idx);
+  }
+
+  function handleSubmit() {
+    if (selected == null) return;
+    if (selected === q.correctIndex) {
+      setScore((s) => s + 1);
+    }
+    setShowResult(true);
+  }
+
+  function handleNext() {
+    setSelected(null);
+    setShowResult(false);
+    setCurrentIndex((i) => i + 1);
+  }
+
+  useEffect(() => {
+    if (showResult && currentIndex === questions.length - 1) {
+      submitGame({
+        username,
+        gameType: "quiz",
+        topic,
+        title: "Quiz – " + topic,
+        score,
+      });
+    }
+  }, [showResult]);
 
   return (
     <div>
-      <div
-        style={{
-          fontSize: "0.85rem",
-          color: "#6b7280",
-          marginBottom: 4,
-        }}
-      >
+      {/* Header */}
+      <div style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: 4 }}>
         Quiz · Question {currentIndex + 1} of {questions.length} · Score:{" "}
         <strong>{score}</strong>
       </div>
+
+      {/* Question */}
       <div
         style={{
           padding: 10,
@@ -533,71 +677,61 @@ function QuizGame() {
       >
         <div
           style={{
-            fontSize: "0.75rem",
-            color: "#3b82f6",
-            marginBottom: 4,
-          }}
-        >
-          Topic: {q.topic}
-        </div>
-        <div
-          style={{
             fontWeight: 600,
             marginBottom: 8,
+            fontSize: "0.9rem",
           }}
         >
           {q.question}
         </div>
+
+        {/* Options */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {q.options.map((opt, idx) => {
-            const isSelected = selected === idx;
-            const showCorrect = showResult && idx === q.correctIndex;
-            const showIncorrect =
-              showResult && isSelected && idx !== q.correctIndex;
+          {Array.isArray(q.options) &&
+            q.options.map((opt, idx) => {
+              const isSelected = selected === idx;
+              const showCorrect = showResult && idx === q.correctIndex;
+              const showIncorrect =
+                showResult && isSelected && idx !== q.correctIndex;
 
-            let bg = "#ffffff";
-            let border = "1px solid rgba(148,163,184,0.7)";
-            if (isSelected && !showResult) {
-              bg = "#eff6ff";
-              border = "1px solid #3b82f6";
-            }
-            if (showCorrect) {
-              bg = "#dcfce7";
-              border = "1px solid #22c55e";
-            }
-            if (showIncorrect) {
-              bg = "#fee2e2";
-              border = "1px solid #ef4444";
-            }
+              let bg = "#ffffff";
+              let border = "1px solid rgba(148,163,184,0.7)";
 
-            return (
-              <button
-                key={idx}
-                onClick={() => handleOptionClick(idx)}
-                style={{
-                  textAlign: "left",
-                  padding: "6px 8px",
-                  borderRadius: 10,
-                  border,
-                  background: bg,
-                  cursor: showResult ? "default" : "pointer",
-                  fontSize: "0.85rem",
-                }}
-              >
-                {opt}
-              </button>
-            );
-          })}
+              if (isSelected && !showResult) {
+                bg = "#eff6ff";
+                border = "1px solid #3b82f6";
+              }
+              if (showCorrect) {
+                bg = "#dcfce7";
+                border = "1px solid #22c55e";
+              }
+              if (showIncorrect) {
+                bg = "#fee2e2";
+                border = "1px solid #ef4444";
+              }
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleOptionClick(idx)}
+                  style={{
+                    textAlign: "left",
+                    padding: "6px 8px",
+                    borderRadius: 10,
+                    border,
+                    background: bg,
+                    cursor: showResult ? "default" : "pointer",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {opt}
+                </button>
+              );
+            })}
         </div>
 
-        <div
-          style={{
-            marginTop: 8,
-            display: "flex",
-            gap: 6,
-            alignItems: "center",
-          }}
-        >
+        {/* Controls */}
+        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
           {!showResult && (
             <button
               onClick={handleSubmit}
@@ -605,9 +739,8 @@ function QuizGame() {
                 padding: "6px 12px",
                 borderRadius: 9999,
                 border: "none",
-                background:
-                  "linear-gradient(135deg,#3b82f6,#0ea5e9)",
-                color: "#f9fafb",
+                background: "linear-gradient(135deg,#3b82f6,#0ea5e9)",
+                color: "#ffffff",
                 fontSize: "0.85rem",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -616,6 +749,7 @@ function QuizGame() {
               Check answer
             </button>
           )}
+
           {showResult && currentIndex < questions.length - 1 && (
             <button
               onClick={handleNext}
@@ -624,7 +758,6 @@ function QuizGame() {
                 borderRadius: 9999,
                 border: "none",
                 background: "#e5e7eb",
-                color: "#111827",
                 fontSize: "0.85rem",
                 cursor: "pointer",
               }}
@@ -632,13 +765,9 @@ function QuizGame() {
               Next question
             </button>
           )}
+
           {showResult && currentIndex === questions.length - 1 && (
-            <span
-              style={{
-                fontSize: "0.8rem",
-                color: "#15803d",
-              }}
-            >
+            <span style={{ fontSize: "0.8rem", color: "#15803d" }}>
               Quiz complete! Final score: {score}/{questions.length}
             </span>
           )}
@@ -648,29 +777,136 @@ function QuizGame() {
   );
 }
 
-function RiddlesGame() {
-  const riddles = [
-    {
-      id: 1,
-      prompt:
-        "I live on your phone and ask for too many permissions. If you install me from untrusted stores, I may steal your data. What am I?",
-      answer: "A malicious mobile app (malware).",
-    },
-    {
-      id: 2,
-      prompt:
-        "I am a fake login page that looks exactly like the real thing. If you trust me, I’ll take your password. Who am I?",
-      answer: "A phishing page.",
-    },
-    {
-      id: 3,
-      prompt:
-        "I limit what each user can do in a system so one mistake doesn’t break everything. What security principle am I?",
-      answer: "Least privilege.",
-    },
-  ];
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: 4 }}>
+        Quiz · Question {currentIndex + 1} of {questions.length} · Score:{" "}
+        <strong>{score}</strong>
+      </div>
+
+      {/* Question */}
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 12,
+          border: "1px solid rgba(148,163,184,0.7)",
+          background: "#f9fafb",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 600,
+            marginBottom: 8,
+            fontSize: "0.9rem",
+          }}
+        >
+          {q.question}
+        </div>
+
+        {/* Options */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {Array.isArray(q.options) &&
+            q.options.map((opt, idx) => {
+              const isSelected = selected === idx;
+              const showCorrect = showResult && idx === q.correctIndex;
+              const showIncorrect =
+                showResult && isSelected && idx !== q.correctIndex;
+
+              let bg = "#ffffff";
+              let border = "1px solid rgba(148,163,184,0.7)";
+
+              if (isSelected && !showResult) {
+                bg = "#eff6ff";
+                border = "1px solid #3b82f6";
+              }
+              if (showCorrect) {
+                bg = "#dcfce7";
+                border = "1px solid #22c55e";
+              }
+              if (showIncorrect) {
+                bg = "#fee2e2";
+                border = "1px solid #ef4444";
+              }
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleOptionClick(idx)}
+                  style={{
+                    textAlign: "left",
+                    padding: "6px 8px",
+                    borderRadius: 10,
+                    border,
+                    background: bg,
+                    cursor: showResult ? "default" : "pointer",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+        </div>
+
+        {/* Controls */}
+        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+          {!showResult && (
+            <button
+              onClick={handleSubmit}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9999,
+                border: "none",
+                background: selected == null ? "#cbd5e1" : "linear-gradient(135deg,#3b82f6,#0ea5e9)",
+                color: "#ffffff",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                cursor: selected == null ? "not-allowed" : "pointer",
+              }}
+            >
+              Check answer
+            </button>
+          )}
+
+          {showResult && currentIndex < questions.length - 1 && (
+            <button
+              onClick={handleNext}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9999,
+                border: "none",
+                background: "#e5e7eb",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+              }}
+            >
+              Next question
+            </button>
+          )}
+
+          {showResult && currentIndex === questions.length - 1 && (
+            <span style={{ fontSize: "0.8rem", color: "#15803d" }}>
+              Quiz complete! Final score: {score}/{questions.length}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiddlesGame({ username, topic }) {
+  const [riddles, setRiddles] = useState([]);
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+
+  useEffect(() => {
+    fetchGame({ username, topic, gameType: "riddles" }).then(setRiddles);
+  }, [username, topic]);
+
+  if (!riddles.length) return <p>Loading riddles…</p>;
 
   const r = riddles[index];
 
@@ -765,32 +1001,16 @@ function RiddlesGame() {
   );
 }
 
-function FlashCardsGame() {
-  const cards = [
-    {
-      id: 1,
-      front: "CIA Triad",
-      back: "Confidentiality, Integrity, Availability – three core goals of security.",
-    },
-    {
-      id: 2,
-      front: "Mobile device hardening",
-      back: "Use screen lock, OS updates, store apps from trusted stores, and enable encryption.",
-    },
-    {
-      id: 3,
-      front: "Firewall",
-      back: "A network device or software that filters traffic based on rules.",
-    },
-    {
-      id: 4,
-      front: "Phishing",
-      back: "Deceptive messages or sites that trick users into revealing credentials or data.",
-    },
-  ];
-
+function FlashCardsGame({ username, topic }) {
+  const [cards, setCards] = useState([]);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+
+  useEffect(() => {
+    fetchGame({ username, topic, gameType: "flashcards" }).then(setCards);
+  }, [username, topic]);
+
+  if (!cards.length) return <p>Loading cards…</p>;
 
   const c = cards[index];
 
@@ -905,34 +1125,21 @@ function FlashCardsGame() {
   );
 }
 
-function ActiveRecallGame() {
-  const prompts = [
-    {
-      id: 1,
-      question:
-        "Explain, in your own words, how you would secure a new Android phone that you use for banking.",
-      hint: "Think: screen lock, OS updates, app sources, encryption, backups.",
-    },
-    {
-      id: 2,
-      question:
-        "Describe the difference between authentication and authorization with a cyber security example.",
-      hint: "Login vs. what resources you can access.",
-    },
-    {
-      id: 3,
-      question:
-        "List at least three signs that an email might be a phishing attempt.",
-      hint: "Sender, links, tone, urgency.",
-    },
-  ];
-
+function ActiveRecallGame({ username, topic }) {
+  const [prompts, setPrompts] = useState([]);
   const [index, setIndex] = useState(0);
   const [notes, setNotes] = useState("");
   const [showHint, setShowHint] = useState(false);
-  const [completed, setCompleted] = useState({}); // id -> true
+  const [completed, setCompleted] = useState({});
+
+  useEffect(() => {
+    fetchGame({ username, topic, gameType: "recall" }).then(setPrompts);
+  }, [username, topic]);
+
+  if (!prompts.length) return <p>Loading prompts…</p>;
 
   const p = prompts[index];
+
   const isDone = completed[p.id];
 
   function markDone() {
@@ -1073,3 +1280,195 @@ function ActiveRecallGame() {
   );
 }
 
+function MysteryGame({ username, topic }) {
+  const [cases, setCases] = useState([]);
+  const [index, setIndex] = useState(0);
+  const [showSolution, setShowSolution] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!username || !topic) return;
+
+    setLoading(true);
+    setError("");
+    setCases([]);
+    setIndex(0);
+    setShowSolution(false);
+
+    fetchGame({
+      username,
+      topic,
+      gameType: "mystery",
+    })
+      .then((data) => {
+        if (!Array.isArray(data)) {
+          throw new Error("Invalid mystery game data");
+        }
+        setCases(data);
+      })
+      .catch((err) => {
+        console.error("Mystery game error:", err);
+        setError(err.message || "Failed to load mystery cases");
+      })
+      .finally(() => setLoading(false));
+  }, [username, topic]);
+
+  if (loading) {
+    return (
+      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+        Loading mystery cases…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 12,
+          background: "#fee2e2",
+          border: "1px solid #ef4444",
+          color: "#991b1b",
+          fontSize: "0.85rem",
+        }}
+      >
+        ❌ {error}
+      </div>
+    );
+  }
+
+  if (!cases.length) {
+    return (
+      <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+        No mystery cases found for this topic.
+      </div>
+    );
+  }
+
+  const c = cases[index];
+
+  function nextCase() {
+    setShowSolution(false);
+    setIndex((i) => (i + 1) % cases.length);
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div
+        style={{
+          fontSize: "0.85rem",
+          color: "#6b7280",
+          marginBottom: 4,
+        }}
+      >
+        Mystery · Scenario-based investigation
+        <span style={{ marginLeft: 6 }}>
+          · Case {index + 1} of {cases.length}
+        </span>
+      </div>
+
+      {/* Case card */}
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid rgba(148,163,184,0.7)",
+          background: "#f9fafb",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: "0.75rem",
+            color: "#7c3aed",
+            marginBottom: 4,
+          }}
+        >
+          🕵️ Scenario
+        </div>
+
+        <div
+          style={{
+            fontWeight: 600,
+            marginBottom: 8,
+            fontSize: "0.9rem",
+          }}
+        >
+          {c.scenario}
+        </div>
+
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "#1f2937",
+            marginBottom: 6,
+          }}
+        >
+          <strong>Question:</strong> {c.question}
+        </div>
+
+        {showSolution && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              borderRadius: 10,
+              background: "#ecfeff",
+              border: "1px solid #67e8f9",
+              color: "#155e75",
+              fontSize: "0.85rem",
+            }}
+          >
+            <strong>Solution:</strong> {c.solution}
+          </div>
+        )}
+
+        {/* Controls */}
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          {!showSolution && (
+            <button
+              onClick={() => setShowSolution(true)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 9999,
+                border: "none",
+                background: "#7c3aed",
+                color: "#ffffff",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              Reveal solution
+            </button>
+          )}
+
+          <button
+            onClick={nextCase}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 9999,
+              border: "none",
+              background: "#e5e7eb",
+              color: "#111827",
+              fontSize: "0.8rem",
+              cursor: "pointer",
+              marginLeft: showSolution ? 0 : "auto",
+            }}
+          >
+            Next case ▶
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

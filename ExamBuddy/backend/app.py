@@ -47,7 +47,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # ---------- Flask setup ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_dev_key")
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": "*"}})
 
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
@@ -133,8 +133,11 @@ def load_user(user_id):
         return User(data["id"], data["username"], data.get("direct_login", False))
     return None
 
-def normalize_username(raw: str) -> str:
+def normalize_username(raw):
+    if not raw:
+        return None
     return raw.strip().replace(" ", "_")
+
 
 # ---------- Email validation ----------
 def is_email_valid(email):
@@ -868,9 +871,6 @@ def chat():
     if not username:
         return jsonify({"reply": "Username is missing."}), 400
 
-    # ---- NEW: agentic path ----
-    from agentic_core import run_agentic_flow
-
     AUTO_AGENTIC_KEYWORDS = [
         "my progress",
         "what do you know about me",
@@ -1162,47 +1162,60 @@ def save_thread():
 @app.route("/api/generate-notes", methods=["POST"])
 def api_generate_notes():
     data = request.get_json() or {}
+
     topic = (data.get("topic") or "").strip()
     note_format = (data.get("note_format") or "detailed").strip()
-    custom_prompt = data.get("custom_prompt") or ""
-    username = normalize_username(data.get("username") or "")
+    custom_prompt = (data.get("custom_prompt") or "").strip()
+    username_raw = (data.get("username") or "").strip()
 
-    if not topic or not username:
+    if not topic or not username_raw:
         return jsonify(success=False, error="Missing topic or username"), 400
 
-    # ---------- 1) Build LLM prompt ----------
-    base_instruction = build_format_instruction(note_format)
-    user_prompt = (
-        f"You are generating high-quality study material strictly from the "
-        f"user's uploaded notes. Topic: '{topic}'.\n\n"
-        f"Output format: {base_instruction}.\n\n"
-        f"Additional instructions from user (if any): {custom_prompt}\n\n"
-        f"Use clear headings, bullet points, and well-structured sections. "
-        f"Do not hallucinate content that is not present or implied in the uploaded notes."
-    )
+    username = normalize_username(username_raw)
 
-    # ---------- 2) RAG retrieval ----------
+    # ---------- 1) RAG QUERY ----------
     try:
-        q_emb = embed_local([user_prompt])[0]
+        rag_query = f"{topic} {custom_prompt}".strip()
+        q_emb = embed_local([rag_query])[0]
         results = search_faiss(username, None, q_emb, top_k=8)
     except Exception as e:
         print("RAG error:", e)
         results = []
 
-    context_blocks = []
-    for r in results or []:
-        context_blocks.append(
-            f"[{r['folder_title']} / {r['section_title']}] {r['content']}"
-        )
-    context = "\n\n".join(context_blocks)
+    if not results:
+        return jsonify(
+            success=False,
+            error="No relevant uploaded notes found. Please upload notes first."
+        ), 400
+
+    context = "\n\n".join(
+        f"[{r['folder_title']} / {r['section_title']}] {r['content']}"
+        for r in results
+    )
+
+    # ---------- 2) STRICT PROMPT ----------
+    strict_system_prompt = (
+        "You are PrepIQ.\n"
+        "You MUST generate notes strictly and ONLY from the provided context.\n"
+        "If something is missing, explicitly write: 'Not found in uploaded notes'.\n"
+        "Do NOT use outside knowledge."
+    )
+
+    format_instruction = build_format_instruction(note_format)
+
+    user_prompt = (
+        f"Topic: {topic}\n\n"
+        f"Format: {format_instruction}\n\n"
+        f"Additional instructions: {custom_prompt}\n"
+    )
 
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        SystemMessage(content=f"Context (user uploaded notes only):\n{context}"),
+        SystemMessage(content=strict_system_prompt),
+        SystemMessage(content=f"Context:\n{context}"),
         HumanMessage(content=user_prompt),
     ]
 
-    # ---------- 3) Call LLM ----------
+    # ---------- 3) LLM ----------
     try:
         resp = llm.invoke(messages)
         raw_notes = resp.content.strip()
@@ -1211,12 +1224,11 @@ def api_generate_notes():
         return jsonify(success=False, error="LLM failed"), 500
 
     if not raw_notes:
-        return jsonify(success=False, error="Empty notes"), 500
+        return jsonify(success=False, error="Empty notes generated"), 500
 
-    # ---------- 4) Convert TEXT -> PDF bytes via ReportLab ----------
+    # ---------- 4) PDF ----------
     pdf_bytes = notes_to_pdf_bytes(topic, note_format, raw_notes)
 
-    # ---------- 5) Upload PDF using existing upload flow ----------
     tmp = NamedTemporaryFile(delete=False, suffix=".pdf")
     tmp.write(pdf_bytes)
     tmp.flush()
@@ -1227,23 +1239,18 @@ def api_generate_notes():
         content_type="application/pdf",
     )
 
-    try:
-        paths = upload_generated_file_to_supabase(
-            root_type="generated_notes",
-            username=username,  # already normalized earlier
-            title=f"{topic}_{note_format}_notes",
-            file_obj=pdf_file,
-        )
-    except Exception as e:
-        print("[GENERATE-NOTES] upload to supabase failed:", e)
-        import traceback; traceback.print_exc()
-        return jsonify(success=False, error="Upload failed", details=str(e)), 500
-
+    # ---------- 5) UPLOAD ----------
+    paths = upload_generated_file_to_supabase(
+        root_type="generated_notes",
+        username=username,
+        title=f"{topic}_{note_format}_notes",
+        file_obj=pdf_file,
+    )
 
     return jsonify(
-    success=True,
-    notes=raw_notes,
-    pdf_paths=paths,
+        success=True,
+        notes=raw_notes,
+        pdf_paths=paths,
     )
 
 def build_format_instruction(fmt: str) -> str:
@@ -1262,61 +1269,33 @@ def build_format_instruction(fmt: str) -> str:
     }
     return mapping.get(fmt, mapping["detailed"])
 
-def render_notes_html(topic, fmt, body_text):
-    # body_text is Markdown-like or plain text; you can keep it simple
-    safe_topic = escape(topic)
-    safe_body = body_text.replace("\n", "<br/>")  # quick version; can be improved
-    return f"""
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>{safe_topic} - {fmt}</title>
-        <style>
-          body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-                 font-size: 12pt; line-height: 1.5; padding: 24px; }}
-          h1, h2, h3 {{ color: #333; }}
-          ul {{ margin-left: 18px; }}
-          .meta {{ font-size: 10pt; color: #666; margin-bottom: 12px; }}
-        </style>
-      </head>
-      <body>
-        <h1>{safe_topic} ({fmt})</h1>
-        <div class="meta">Generated from your uploaded notes in  PrepIQ.</div>
-        <div>{safe_body}</div>
-      </body>
-    </html>
-    """
-
 def notes_to_pdf_bytes(topic: str, note_format: str, notes: str) -> bytes:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
 
-    # margins
     left = 50
     top = height - 50
-    line_height = 14
 
-    # title
+    # Title
     c.setFont("Helvetica-Bold", 16)
     c.drawString(left, top, f"{topic} ({note_format})")
-    y = top - 2 * line_height
 
-    # body
-    c.setFont("Helvetica", 11)
-    for raw_line in notes.splitlines():
-        line = raw_line.rstrip()
+    text = c.beginText(left, top - 30)
+    text.setFont("Helvetica", 11)
+    text.setLeading(14)
 
-        if not line:
-            y -= line_height
-        else:
-            if y < 60:
-                c.showPage()
-                c.setFont("Helvetica", 11)
-                y = height - 50
-            c.drawString(left, y, line)
-            y -= line_height
+    for line in notes.splitlines():
+        if text.getY() < 60:
+            c.drawText(text)
+            c.showPage()
+            text = c.beginText(left, height - 50)
+            text.setFont("Helvetica", 11)
+            text.setLeading(14)
 
+        text.textLine(line)
+
+    c.drawText(text)
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -1324,42 +1303,35 @@ def notes_to_pdf_bytes(topic: str, note_format: str, notes: str) -> bytes:
 def upload_generated_file_to_supabase(root_type: str, username: str, title: str, file_obj):
     if not supabase_available():
         raise RuntimeError("Supabase not configured")
-    
-    root_type="generated_notes"
 
     username_norm = normalize_username(username)
     title_norm = normalize_title(title)
+
     base_prefix = f"{root_type}/{username_norm}/{title_norm}/"
 
     storage = supabase_server.storage.from_(STORAGE_BUCKET)
-    saved_paths = []
 
-    # file_obj is a single FileStorage here
     if not file_obj or not file_obj.filename:
-        raise RuntimeError("No valid file provided")
+        raise RuntimeError("Invalid file")
 
     filename = os.path.basename(file_obj.filename)
     key = base_prefix + filename
 
     try:
         storage.remove(key)
-    except Exception as e:
-        print("DELETE BEFORE REPLACE ERROR for", key, ":", e)
+    except Exception:
+        pass
 
     file_bytes = file_obj.read()
-    print("UPLOADING", key, "size:", len(file_bytes))
 
     resp = storage.upload(
         key,
         file_bytes,
-        {"content-type": file_obj.mimetype or "application/octet-stream"},
+        {"content-type": file_obj.mimetype or "application/pdf"},
     )
-    print("UPLOAD RESP for", key, "=>", resp)
 
     if isinstance(resp, dict) and resp.get("error"):
-        raise RuntimeError(str(resp["error"]))
-
-    saved_paths.append(key)
+        raise RuntimeError(resp["error"])
 
     try:
         ingest_single_file(
@@ -1368,9 +1340,9 @@ def upload_generated_file_to_supabase(root_type: str, username: str, title: str,
             path_in_bucket=key,
         )
     except Exception as e:
-        print("INGEST ERROR for", key, ":", e)
+        print("INGEST ERROR:", e)
 
-    return saved_paths
+    return [key]
 
 # ---------- Mind Map ----------
 def extract_json_from_response(text: str) -> dict:
@@ -1437,38 +1409,24 @@ def build_mindmap_prompt(topic: str, extra: str) -> str:
 
     return prompt
 
-
 def call_llm_for_mindmap(topic: str, extra: str) -> dict:
-    """
-    Call LLM and robustly parse JSON response.
-    """
     prompt = build_mindmap_prompt(topic, extra)
-    
+
     try:
-        resp = llm.invoke(prompt)
-        raw_response = resp.content.strip()
-        
-        print(f"[MINDMAP] Raw LLM response:{raw_response}")
-        
-        # Extract and parse JSON
-        mindmap_tree = extract_json_from_response(raw_response)
-        
-        print(f"[MINDMAP] Parsed tree successfully: {json.dumps(mindmap_tree, indent=2)}")
-        return mindmap_tree
-        
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip()
+        return extract_json_from_response(raw)
+
     except Exception as e:
-        print(f"[MINDMAP ERROR] LLM call failed: {e}")
-        # Fallback minimal tree
-        fallback = {
+        print("MINDMAP ERROR:", e)
+        return {
             "label": topic,
             "children": [
                 {"label": "Main concepts", "children": []},
                 {"label": "Key definitions", "children": []},
-                {"label": "Important formulas", "children": []}
-            ]
+                {"label": "Important formulas", "children": []},
+            ],
         }
-        print(f"[MINDMAP] Using fallback tree: {json.dumps(fallback, indent=2)}")
-        return fallback
 
 def draw_node(c: canvas.Canvas, node: dict, x: float, y: float,
               indent: float, line_height: float = 18, max_width: float = 500) -> float:
@@ -1537,39 +1495,21 @@ def generate_mindmap_pdf_bytes(topic: str, mindmap: dict) -> bytes:
     return buf.read()
 
 def upload_mindmap_to_supabase(username: str, topic: str, pdf_bytes: bytes) -> str:
-    """
-    Upload mind map PDF to Supabase Storage.
-    Mirrors your existing upload_docs logic.
-    Returns public URL.
-    """
+    username = normalize_username(username)
+    topic = normalize_title(topic)
 
-    # Path: Username_MindMaps/Topic/mindmap.pdf
-    file_path = f"{username}_MindMaps/{topic}/mindmap.pdf"
-    try:
-        # Upload with upsert=true to overwrite on regenerate
-        res = supabase_server.storage.from_(STORAGE_BUCKET).upload(
-            path=file_path,
-            file=pdf_bytes,
-            file_options={
-                "content-type": "application/pdf",
-                "cache-control": "3600",
-                "upsert": "true",
-            },
-        )
-        
-        print(f"[MINDMAP] Uploaded to Supabase: {file_path}")
-        
-        # Build public URL (same pattern as your notes)
-        public_url = (
-            f"{SUPABASE_URL}/storage/v1/object/public/"
-            f"{STORAGE_BUCKET}/{file_path}"
-        )
-        
-        return public_url
+    key = f"generated_notes/{username}/{topic}/mindmap.pdf"
 
-    except Exception as e:
-        print(f"[MINDMAP UPLOAD ERROR] {e}")
-        raise
+    supabase_server.storage.from_(STORAGE_BUCKET).upload(
+        path=key,
+        file=pdf_bytes,
+        file_options={
+            "content-type": "application/pdf",
+            "upsert": "true",
+        },
+    )
+
+    return f"{SUPABASE_URL}/storage/v1/object/public/{STORAGE_BUCKET}/{key}"
 
 # ---------- Settings App------------------
 # settings_routes.py
@@ -1861,6 +1801,181 @@ def download_note():
         download_name="note.txt",
         mimetype="text/plain"
     )
+
+# Games
+def get_topic_chunks(username: str, topic: str, top_k=12):
+    q_emb = embed_local([topic])[0]
+    results = search_faiss(username, None, q_emb, top_k=top_k)
+
+    if not results:
+        return []
+
+    return [
+        {
+            "text": r["content"],
+            "section": r["section_title"],
+            "folder": r["folder_title"],
+        }
+        for r in results
+    ]
+
+def generate_game_content(game_type: str, topic: str, chunks: list):
+    context = "\n\n".join(c["text"] for c in chunks[:8])
+
+    PROMPTS = {
+        "quiz": """
+Generate EXACTLY 6 multiple-choice questions strictly from the context.
+
+Rules:
+- Use ONLY the context
+- 4 options per question
+- correctIndex must be 0–3
+- No markdown
+- No explanations outside JSON
+
+Return ONLY valid JSON:
+
+[
+  {
+    "question": "string",
+    "options": ["string","string","string","string"],
+    "correctIndex": 0,
+    "explanation": "string"
+  }
+]
+""",
+
+        "flashcards": """
+Generate multiple flashcards strictly from the context.
+
+Return ONLY valid JSON:
+
+[
+  { "front": "string", "back": "string" }
+]
+""",
+
+        "riddles": """
+Generate multiple riddles strictly from the context.
+
+Return ONLY valid JSON:
+
+[
+  { "prompt": "string", "answer": "string" }
+]
+""",
+
+        "recall": """
+Generate multiple active recall prompts strictly from the context.
+
+Return ONLY valid JSON:
+
+[
+  { "question": "string", "hint": "string" }
+]
+""",
+
+        "mystery": """
+Generate multiple scenario-based cases strictly from the context.
+
+Return ONLY valid JSON:
+
+[
+  {
+    "scenario": "string",
+    "question": "string",
+    "solution": "string"
+  }
+]
+"""
+    }
+
+    msgs = [
+        SystemMessage(content="You generate educational games strictly from provided context."),
+        SystemMessage(content=f"Context:\n{context}"),
+        HumanMessage(content=PROMPTS[game_type]),
+    ]
+
+    resp = llm.invoke(msgs)
+    return safe_json_loads(resp.content)
+
+@app.route("/api/games/generate", methods=["POST"])
+def generate_game():
+    data = request.get_json(silent=True) or {}
+
+    username = normalize_username(data.get("username"))
+    topic = (data.get("topic") or "").strip()
+    game_type = (data.get("game_type") or "").strip()
+
+    if not username:
+        return jsonify(error="Username missing"), 400
+    if not topic or not game_type:
+        return jsonify(error="Topic or game type missing"), 400
+
+    chunks = get_topic_chunks(username, topic)
+    if not chunks:
+        return jsonify(error="No uploaded notes found"), 400
+
+    try:
+        content = generate_game_content(game_type, topic, chunks)
+    except Exception as e:
+        print("❌ GAME GENERATION ERROR:", e)
+        return jsonify(error="Failed to generate game"), 500
+
+    return jsonify(success=True, content=content), 200
+
+@app.route("/api/games/submit", methods=["POST"])
+def submit_game():
+    data = request.get_json()
+
+    supabase_server.table("game_sessions").insert({
+        "user_id": get_user_id_by_username(data["username"]),
+        "game_type": data["game_type"],
+        "topic": data["topic"],
+        "title": data.get("title"),
+        "score": data.get("score"),
+    }).execute()
+
+    return jsonify(success=True)
+
+def safe_json_loads(text):
+    if not text or not text.strip():
+        raise ValueError("Empty LLM response")
+
+    # Try direct JSON
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting JSON block from markdown
+    match = re.search(r"\{[\s\S]*\}|\[[\s\S]*\]", text)
+    if match:
+        return json.loads(match.group())
+
+    raise ValueError("LLM response is not valid JSON")
+
+@app.route("/api/games/history")
+def game_history():
+    username = request.args.get("username")
+    if not username:
+        return jsonify([])
+
+    user_id = get_user_id_by_username(username)
+    if not user_id:
+        return jsonify([])
+
+    res = (
+        supabase_server
+        .table("game_sessions")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(20)
+        .execute()
+    )
+
+    return jsonify(res.data or [])
 
 if __name__ == "__main__":
     app.run(debug=True)
